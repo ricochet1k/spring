@@ -98,7 +98,7 @@ inline shortint2 GetHAndPFromVector(const float3& vec)
 	#if defined BUILDING_AI
 	int iy = (int) (std::asin(vec.y) * (SHORTINT_MAXVALUE / PI));
 	#else
-	int iy = (int) (streflop::asin(vec.y) * (SHORTINT_MAXVALUE / PI));
+	int iy = (int) (asin(vec.y) * (SHORTINT_MAXVALUE / PI));
 	#endif // defined BUILDING_AI
 	iy %= SHORTINT_MAXVALUE;
 	ret.y = (short int) iy;

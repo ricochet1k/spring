@@ -384,7 +384,7 @@ int CCobInstance::MoveToward(float &cur, float dest, float speed)
 {
 	const float delta = dest - cur;
 
-	if (streflop::fabsf(delta) <= speed) {
+	if (fabsf(delta) <= speed) {
 		cur = dest;
 		return 1;
 	}
@@ -419,7 +419,7 @@ int CCobInstance::TurnToward(float &cur, float dest, float speed)
 		delta += TWOPI;
 	}
 
-	if (streflop::fabsf(delta) <= speed) {
+	if (fabsf(delta) <= speed) {
 		cur = dest;
 		return 1;
 	}
@@ -447,7 +447,7 @@ int CCobInstance::DoSpin(float &cur, float dest, float &speed, float accel, int 
 	//Check if we are not at the final speed
 	if (speed != dest) {
 		speed += accel * (30.0f / divisor);   //TA obviously defines accelerations in speed/frame (at 30 fps)
-		if (streflop::fabsf(speed) > dest)      // make sure we dont go past desired speed
+		if (fabsf(speed) > dest)      // make sure we dont go past desired speed
 			speed = dest;
 		if ((accel < 0.0f) && (speed == 0.0f))
 			return 1;

@@ -1397,7 +1397,7 @@ int LuaSyncedCtrl::SetUnitCloak(lua_State* L)
 	else if (lua_isboolean(L, 3)) {
 		const float defDist = unit->unitDef->decloakDistance;
 		if (lua_toboolean(L, 3)) {
-			unit->decloakDistance = streflop::fabsf(defDist);
+			unit->decloakDistance = fabsf(defDist);
 		} else {
 			unit->decloakDistance = defDist;
 		}
@@ -2748,7 +2748,7 @@ int LuaSyncedCtrl::AddHeightMap(lua_State* L)
 
 	const int index = (z * (gs->mapx + 1)) + x;
 	const float oldHeight = readmap->GetHeightmap()[index];
-	heightMapAmountChanged += streflop::fabsf(h);
+	heightMapAmountChanged += fabsf(h);
 
 	// update RecalcArea()
 	if (x < heightMapx1) { heightMapx1 = x; }
@@ -2795,7 +2795,7 @@ int LuaSyncedCtrl::SetHeightMap(lua_State* L)
 	}
 
 	const float heightDiff = (height - oldHeight);
-	heightMapAmountChanged += streflop::fabsf(heightDiff);
+	heightMapAmountChanged += fabsf(heightDiff);
 
 	// update RecalcArea()
 	if (x < heightMapx1) { heightMapx1 = x; }

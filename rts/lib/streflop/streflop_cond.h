@@ -18,6 +18,7 @@ namespace math {
 }
 #else
 #include <cmath>
+#include <math.h>
 namespace math {
 	using std::fabs;
 	using std::sqrt;

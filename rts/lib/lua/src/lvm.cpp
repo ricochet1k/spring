@@ -10,7 +10,7 @@
 #include <string.h>
 
 //SPRING#include <math.h>
-#include "streflop_cond.h" // FIXME -- should always be compiled with streflop
+#include "lib/streflop/streflop_cond.h" // FIXME -- should always be compiled with streflop
 #ifdef UNITSYNC
 using std::isfinite;
 using std::isnan;

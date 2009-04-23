@@ -1299,7 +1299,9 @@ bool CGame::ActionPressed(const Action& action,
 			SDL_ShowCursor(savedCursorMode);
 			//aviGenerator->InitEngine() (avicap32.dll)? modifies the FPU control word.
 			//Setting it back to default state.
-			streflop_init<streflop::Simple>();
+#ifdef STREFLOP_H
+			streflop_init<Simple>();
+#endif
 		}
 	}
 #endif
@@ -2218,7 +2220,7 @@ void CGame::ActionReceived(const Action& action, int playernum)
 
 		if (unitName == "all") {
 			// player entered ".give all"
-			int sqSize = (int) streflop::ceil(streflop::sqrt((float) unitDefHandler->numUnitDefs));
+			int sqSize = (int) ceil(sqrt((float) unitDefHandler->numUnitDefs));
 			int currentNumUnits = teamHandler->Team(team)->units.size();
 			int numRequestedUnits = unitDefHandler->numUnitDefs;
 
@@ -2265,7 +2267,7 @@ void CGame::ActionReceived(const Action& action, int playernum)
 			if (unitDef != NULL) {
 				int xsize = unitDef->xsize;
 				int zsize = unitDef->zsize;
-				int squareSize = (int) streflop::ceil(streflop::sqrt((float) numRequestedUnits));
+				int squareSize = (int) ceil(sqrt((float) numRequestedUnits));
 				int total = numRequestedUnits;
 
 				float3 minpos = pos;
@@ -2297,7 +2299,7 @@ void CGame::ActionReceived(const Action& action, int playernum)
 				if (featureDef) {
 					int xsize = featureDef->xsize;
 					int zsize = featureDef->zsize;
-					int squareSize = (int) streflop::ceil(streflop::sqrt((float) numRequestedUnits));
+					int squareSize = (int) ceil(sqrt((float) numRequestedUnits));
 					int total = amount; // FIXME -- feature count limit?
 
 					float3 minpos = pos;

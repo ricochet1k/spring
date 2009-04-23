@@ -7,7 +7,7 @@
 
 #include <assert.h>
 //SPRING#include <math.h>
-#include "streflop_cond.h"
+#include "lib/streflop/streflop_cond.h"
 #include <stdarg.h>
 #include <string.h>
 

@@ -199,7 +199,9 @@ void CPathEstimator::InitBlocks() {
 
 
 void CPathEstimator::CalcOffsetsAndPathCosts(int thread) {
+#ifdef STREFLOP_H
 	streflop_init<streflop::Simple>();
+#endif
 	// NOTE: EstimatePathCosts() [B] is temporally dependent on CalculateBlockOffsets() [A],
 	// A must be completely finished before B_i can be safely called. This means we cannot
 	// let thread i execute (A_i, B_i), but instead have to split the work such that every

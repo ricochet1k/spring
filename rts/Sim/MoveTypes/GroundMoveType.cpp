@@ -1173,8 +1173,8 @@ float CGroundMoveType::Distance2D(CSolidObject* object1, CSolidObject* object2, 
 	} else {
 		// Pytagorean sum of the x and z distance.
 		float3 distVec;
-		float xdiff = streflop::fabs(object1->midPos.x - object2->midPos.x);
-		float zdiff = streflop::fabs(object1->midPos.z - object2->midPos.z);
+		float xdiff = fabs(object1->midPos.x - object2->midPos.x);
+		float zdiff = fabs(object1->midPos.z - object2->midPos.z);
 
 		distVec.x = xdiff - (object1->xsize + object2->xsize) * SQUARE_SIZE / 2 + 2 * marginal;
 		distVec.z = zdiff - (object1->zsize + object2->zsize) * SQUARE_SIZE / 2 + 2 * marginal;
@@ -1517,7 +1517,7 @@ bool CGroundMoveType::CheckColH(int x, int y1, int y2, float xmove, int squareTe
 					float part = owner->mass / (owner->mass + obj->mass * 2.0f);
 					float3 dif = obj->pos - owner->pos;
 					float dl = dif.Length();
-					float colDepth = streflop::fabs(owner->pos.x - xmove);
+					float colDepth = fabs(owner->pos.x - xmove);
 
 					// adjust our own position a bit so we have to
 					// turn less (FIXME: can place us in building)
@@ -1551,10 +1551,10 @@ bool CGroundMoveType::CheckColH(int x, int y1, int y2, float xmove, int squareTe
 		if (blocked) {
 			// HACK: make units find openings on the blocking map more easily
 			if (groundBlockingObjectMap->GetCell(y1 * gs->mapx + x).empty()) {
-				posDelta.z -= streflop::fabs(owner->pos.x - xmove) * 0.5f;
+				posDelta.z -= fabs(owner->pos.x - xmove) * 0.5f;
 			}
 			if (groundBlockingObjectMap->GetCell(y2 * gs->mapx + x).empty()) {
-				posDelta.z += streflop::fabs(owner->pos.x - xmove) * 0.5f;
+				posDelta.z += fabs(owner->pos.x - xmove) * 0.5f;
 			}
 
 			if (!((gs->frameNum + owner->id) & 31) && !owner->commandAI->unimportantMove) {
@@ -1602,7 +1602,7 @@ bool CGroundMoveType::CheckColV(int y, int x1, int x2, float zmove, int squareTe
 					float part = owner->mass / (owner->mass + obj->mass * 2.0f);
 					float3 dif = obj->pos - owner->pos;
 					float dl = dif.Length();
-					float colDepth = streflop::fabs(owner->pos.z - zmove);
+					float colDepth = fabs(owner->pos.z - zmove);
 
 					// adjust our own position a bit so we have to
 					// turn less (FIXME: can place us in building)
@@ -1636,10 +1636,10 @@ bool CGroundMoveType::CheckColV(int y, int x1, int x2, float zmove, int squareTe
 		if (blocked) {
 			// HACK: make units find openings on the blocking map more easily
 			if (groundBlockingObjectMap->GetCell(y * gs->mapx + x1).empty()) {
-				posDelta.x -= streflop::fabs(owner->pos.z - zmove) * 0.5f;
+				posDelta.x -= fabs(owner->pos.z - zmove) * 0.5f;
 			}
 			if (groundBlockingObjectMap->GetCell(y * gs->mapx + x2).empty()) {
-				posDelta.x += streflop::fabs(owner->pos.z - zmove) * 0.5f;
+				posDelta.x += fabs(owner->pos.z - zmove) * 0.5f;
 			}
 
 			if (!((gs->frameNum + owner->id) & 31) && !owner->commandAI->unimportantMove) {

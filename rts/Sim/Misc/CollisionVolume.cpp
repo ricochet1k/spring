@@ -143,8 +143,8 @@ void CollisionVolume::Init(const float3& scales, const float3& offsets, int vTyp
 	// if all axes (or half-axes) are equal in scale, volume is a sphere
 	const bool spherical =
 		((volumeType == COLVOL_TYPE_ELLIPSOID) &&
-		(streflop::fabsf(axisHScales.x - axisHScales.y) < EPS) &&
-		(streflop::fabsf(axisHScales.y - axisHScales.z) < EPS));
+		(fabsf(axisHScales.x - axisHScales.y) < EPS) &&
+		(fabsf(axisHScales.y - axisHScales.z) < EPS));
 
 	if (spherical) {
 		logOutput.Print(LOG_COLVOL, "Auto converting spherical ellipsoid to sphere");
@@ -176,7 +176,7 @@ void CollisionVolume::Init(const float3& scales, const float3& offsets, int vTyp
 		case COLVOL_TYPE_BOX: {
 			// would be an over-estimation for cylinders
 			volumeBoundingRadiusSq = axisHScalesSq.x + axisHScalesSq.y + axisHScalesSq.z;
-			volumeBoundingRadius = streflop::sqrt(volumeBoundingRadiusSq);
+			volumeBoundingRadius = sqrt(volumeBoundingRadiusSq);
 		} break;
 		case COLVOL_TYPE_CYLINDER: {
 			const float prhs = axisHScales[primaryAxis     ];   // primary axis half-scale
@@ -185,7 +185,7 @@ void CollisionVolume::Init(const float3& scales, const float3& offsets, int vTyp
 			const float mshs = std::max(sahs, sbhs);            // max. secondary axis half-scale
 
 			volumeBoundingRadiusSq = prhs * prhs + mshs * mshs;
-			volumeBoundingRadius = streflop::sqrtf(volumeBoundingRadiusSq);
+			volumeBoundingRadius = sqrtf(volumeBoundingRadiusSq);
 		} break;
 		case COLVOL_TYPE_ELLIPSOID: {
 			volumeBoundingRadius = std::max(axisHScales.x, std::max(axisHScales.y, axisHScales.z));

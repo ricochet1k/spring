@@ -338,7 +338,9 @@ public:
 
 	void gmlClient() {
 		set_threadnum(++threadcnt);
+#ifdef STREFLOP_H
 		streflop_init<streflop::Simple>();
+#endif
 		while(dorun) {
 			gmlClientSub();
 		}
@@ -422,7 +424,9 @@ public:
 
 	void gmlClientAux() {
 		set_threadnum(gmlThreadCount);
+#ifdef STREFLOP_H
 		streflop_init<streflop::Simple>();
+#endif
 		while(dorun) {
 			gmlClientAuxSub();
 		}

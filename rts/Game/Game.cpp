@@ -3197,7 +3197,7 @@ void CGame::SimFrame() {
 
 	{
 		SCOPED_TIMER("Collisions");
-		ph->CheckUnitCol();
+		ph->CheckCollisions();
 		ground->CheckCol(ph);
 	}
 

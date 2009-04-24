@@ -25,6 +25,9 @@ namespace math {
 	using std::sin;
 	using std::cos;
 }
+using std::isnan;
+using std::isinf;
+using std::isfinite;
 #endif
 
 #endif

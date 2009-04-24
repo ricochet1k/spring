@@ -239,7 +239,7 @@ void CFreeController::Update()
 		if (pos.y < minHeight) {
 			pos.y = minHeight;
 			if (gndLock) {
-				vel.y = min(fabs(scrollSpeed), ((minHeight - prevPos.y) / ft));
+				vel.y = min(fabs(scrollSpeed), (double)((minHeight - prevPos.y) / ft));
 			} else {
 				vel.y = 0.0f;
 			}

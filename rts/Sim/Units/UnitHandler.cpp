@@ -326,7 +326,7 @@ void CUnitHandler::Update()
 
 	if (!(gs->frameNum & 15)) {
 		if (diminishingMetalMakers)
-			metalMakerEfficiency = 8.0f / (8.0f + max(0.0f, sqrt(metalMakerIncome / teamHandler->ActiveTeams()) - 4));
+			metalMakerEfficiency = 8.0f / (8.0f + max(0.0, sqrt(metalMakerIncome / teamHandler->ActiveTeams()) - 4));
 		metalMakerIncome = 0;
 	}
 }

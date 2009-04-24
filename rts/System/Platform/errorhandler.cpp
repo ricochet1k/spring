@@ -8,7 +8,9 @@
  * Copyright (C) 2005.  Licensed under the terms of the
  * GNU GPL, v2 or later.
  */
+#ifdef _WIN32
 #include <StdAfx.h>
+#endif
 #include "errorhandler.h"
 
 #include <SDL.h>

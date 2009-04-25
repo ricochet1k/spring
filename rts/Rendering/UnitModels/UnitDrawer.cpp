@@ -302,6 +302,7 @@ inline void CUnitDrawer::DoDrawUnit(CUnit *unit, bool drawReflection, bool drawR
 	if (unit->noDraw) {
 		return;
 	}
+
 	if (camera->InView(unit->drawMidPos, unit->radius + 30)) {
 		const unsigned short losStatus = unit->losStatus[gu->myAllyTeam];
 		if ((losStatus & LOS_INLOS) || gu->spectatingFullView) {
@@ -318,13 +319,15 @@ inline void CUnitDrawer::DoDrawUnit(CUnit *unit, bool drawReflection, bool drawR
 					return;
 				}
 			}
-
-			if (drawRefraction) {
+			else if (drawRefraction) {
 				if (unit->pos.y > 0.0f) {
 					return;
 				}
 			}
-
+#ifdef USE_GML
+			else
+				unit->lastDrawFrame = gs->frameNum;
+#endif
 			float sqDist = (unit->pos-camera->pos).SqLength();
 			float iconDistMult = unit->unitDef->iconType->GetDistance();
 			float realIconLength = iconLength * (iconDistMult * iconDistMult);
@@ -1676,7 +1679,7 @@ void DrawCollisionVolume(const CollisionVolume* vol, GLUquadricObj* q) {
 	}
 }
 
-void DrawUnitDebugPieceTree(const LocalModelPiece* p, CMatrix44f mat, GLUquadricObj* q) {
+void DrawUnitDebugPieceTree(const LocalModelPiece* p, const LocalModelPiece* lap, CMatrix44f mat, GLUquadricObj* q) {
 	mat.Translate(p->pos.x, p->pos.y, p->pos.z);
 	mat.RotateY(-p->rot[1]);
 	mat.RotateX(-p->rot[0]);
@@ -1686,12 +1689,22 @@ void DrawUnitDebugPieceTree(const LocalModelPiece* p, CMatrix44f mat, GLUquadric
 		glMultMatrixf(mat.m);
 
 		if (p->visible && !p->colvol->IsDisabled()) {
+			if (p == lap) {
+				glLineWidth(2.0f);
+				glColor3f(1.0f, 0.0f, 0.0f);
+			}
+
 			DrawCollisionVolume(p->colvol, q);
+
+			if (p == lap) {
+				glLineWidth(1.0f);
+				glColor3f(0.0f, 0.0f, 0.0f);
+			}
 		}
 	glPopMatrix();
 
 	for (unsigned int i = 0; i < p->childs.size(); i++) {
-		DrawUnitDebugPieceTree(p->childs[i], mat, q);
+		DrawUnitDebugPieceTree(p->childs[i], lap, mat, q);
 	}
 }
 
@@ -1699,49 +1712,51 @@ inline void CUnitDrawer::DrawUnitDebug(CUnit* unit)
 {
 	if (gu->drawdebug) {
 		glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT);
-		glDisable(GL_LIGHTING);
-		glDisable(GL_LIGHT0);
-		glDisable(GL_LIGHT1);
-		glDisable(GL_CULL_FACE);
-		glDisable(GL_TEXTURE_2D);
-		glDisable(GL_COLOR_MATERIAL);
-		glDisable(GL_BLEND);
-		glDisable(GL_ALPHA_TEST);
-		glDisable(GL_FOG);
-		glDisable(GL_VERTEX_PROGRAM_ARB);
-		glDisable(GL_FRAGMENT_PROGRAM_ARB);
+			glDisable(GL_LIGHTING);
+			glDisable(GL_LIGHT0);
+			glDisable(GL_LIGHT1);
+			glDisable(GL_CULL_FACE);
+			glDisable(GL_TEXTURE_2D);
+			glDisable(GL_BLEND);
+			glDisable(GL_ALPHA_TEST);
+			glDisable(GL_FOG);
+			glDisable(GL_CLIP_PLANE0);
+			glDisable(GL_CLIP_PLANE1);
 
-		const float3 midPosOffset =
+			UnitDrawingTexturesOff(NULL);
+
+			const float3 midPosOffset =
 				(unit->frontdir * unit->relMidPos.z) +
 				(unit->updir    * unit->relMidPos.y) +
 				(unit->rightdir * unit->relMidPos.x);
 
-		glPushMatrix();
-			glTranslatef3(midPosOffset);
+			glPushMatrix();
+				glTranslatef3(midPosOffset);
 
-			GLUquadricObj* q = gluNewQuadric();
+				GLUquadricObj* q = gluNewQuadric();
 
-			// draw the aimpoint
-			glColor3f(1.0f, 0.0f, 0.0f);
-			gluQuadricDrawStyle(q, GLU_FILL);
-			gluSphere(q, 2.0f, 20, 20);
+				// draw the aimpoint
+				glColor3f(1.0f, 1.0f, 1.0f);
+				gluQuadricDrawStyle(q, GLU_FILL);
+				gluSphere(q, 2.0f, 20, 20);
 
-			glColor3f(0.0f, 0.0f, 0.0f);
-			gluQuadricDrawStyle(q, GLU_LINE);
+				glColor3f(0.0f, 0.0f, 0.0f);
+				gluQuadricDrawStyle(q, GLU_LINE);
 
-			if (unit->unitDef->usePieceCollisionVolumes) {
-				// draw only the piece volumes for less clutter
-				CMatrix44f mat(-midPosOffset);
-				DrawUnitDebugPieceTree(unit->localmodel->pieces[0], mat, q);
-			} else {
-				if (!unit->collisionVolume->IsDisabled()) {
-					DrawCollisionVolume(unit->collisionVolume, q);
+				if (unit->unitDef->usePieceCollisionVolumes) {
+					// draw only the piece volumes for less clutter
+					CMatrix44f mat(-midPosOffset);
+					DrawUnitDebugPieceTree(unit->localmodel->pieces[0], unit->lastAttackedPiece, mat, q);
+				} else {
+					if (!unit->collisionVolume->IsDisabled()) {
+						DrawCollisionVolume(unit->collisionVolume, q);
+					}
 				}
-			}
 
-			gluDeleteQuadric(q);
-		glPopMatrix();
+				gluDeleteQuadric(q);
+			glPopMatrix();
 
+			UnitDrawingTexturesOn(NULL);
 		glPopAttrib();
 	}
 }

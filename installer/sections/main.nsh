@@ -5,10 +5,12 @@
 
   ; Main stuff
   File "..\game\spring.exe"
-  File "..\game\spring.def"
+  ; File "..\game\spring.def"
   File "..\game\unitsync.dll"
   CreateDirectory "$INSTDIR\maps"
   CreateDirectory "$INSTDIR\mods"
+
+  File "downloads\TASServer.jar"
 
   ; DLLs (updated in mingwlibs-v8)
   File "..\mingwlibs\dll\glew32.dll"
@@ -36,8 +38,7 @@
 
 ;New Settings Program
 
-  inetc::get \
-  "http://www.springlobby.info/installer/springsettings.exe" "$INSTDIR\springsettings.exe"
+  File "downloads\springsettings.exe"
 
 ; Dlls neede for it
   File /r "..\installer\Springlobby\SettingsDlls\*.dll"
@@ -72,19 +73,12 @@ ${IfNot} ${FileExists} "$INSTDIR\teamcolors.lua"
   File "..\game\teamcolors.lua"
 ${EndIf}
 
-;!endif ; SP_UPDATE
-
-  ; Remove shaders, they are now in springcontent.sdz
-  Delete "$INSTDIR\shaders\*.fp"
-  Delete "$INSTDIR\shaders\*.vp"
-  Delete "$INSTDIR\shaders\*.glsl"
-  RmDir "$INSTDIR\shaders"
-
   SetOutPath "$INSTDIR\fonts"
-  File "..\game\fonts\Luxi.ttf"
+  File "..\game\fonts\FreeSansBold.otf"
 
-  ; Remove Luxi.ttf, it has been moved to fonts/Luxi.ttf
+  ; Remove Luxi.ttf, it has been replaced by FreeSansBold
   Delete "$INSTDIR\Luxi.ttf"
+  Delete "$INSTDIR\fonts\Luxi.ttf"
 
   ; AI Interfaces
 !macro InstallAIInterface aiIntName
@@ -184,7 +178,7 @@ ${EndIf}
   Delete "$INSTDIR\PALETTE.PAL"
 
   ; Fonts
-  Delete "$INSTDIR\fonts\Luxi.ttf"
+  Delete "$INSTDIR\fonts\FreeSansBold.otf"
   RmDir "$INSTDIR\fonts"
 
   ; Skirmish AIs -> each Skirmish AI has its own .nsh file
@@ -203,15 +197,6 @@ ${EndIf}
   RmDir "$INSTDIR\AI\Global"
   RmDir "$INSTDIR\AI\Skirmish"
 
-;  ; Group AIs -> dont exist anymore
-;  ; AI Helper dlls
-;  Delete "$INSTDIR\AI\Helper-libs\CentralBuildAI.dll"
-;  Delete "$INSTDIR\AI\Helper-libs\MetalMakerAI.dll"
-;  Delete "$INSTDIR\AI\Helper-libs\SimpleFormationAI.dll"
-;  Delete "$INSTDIR\AI\Helper-libs\RadarAI.dll"
-;  Delete "$INSTDIR\AI\Helper-libs\MexUpgraderAI.dll"
-;  Delete "$INSTDIR\AI\Helper-libs\EconomyAI.dll"
-;  Delete "$INSTDIR\AI\Helper-libs\ReportIdleAI.dll"
   RmDir "$INSTDIR\AI\Helper-libs"
   RmDir "$INSTDIR\AI"
 

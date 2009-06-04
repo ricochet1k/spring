@@ -130,6 +130,8 @@ enum CommandTopic {
 	COMMAND_UNIT_SET_IDLE_MODE                    = 77,
 	COMMAND_UNIT_CUSTOM                           = 78,
 	COMMAND_CHEATS_GIVE_ME_NEW_UNIT               = 79,
+	COMMAND_TRACE_RAY                             = 80,
+	COMMAND_PAUSE                                 = 81,
 //const int COMMAND_UNIT_ATTACK_POS
 //const int COMMAND_UNIT_INSERT
 //const int COMMAND_UNIT_REMOVE
@@ -138,7 +140,7 @@ enum CommandTopic {
 //const int COMMAND_UNIT_GROUP_SELECT
 //const int COMMAND_UNIT_INTERNAL
 };
-const unsigned int NUM_CMD_TOPICS                 = 80;
+const unsigned int NUM_CMD_TOPICS                 = 82;
 
 
 /**
@@ -241,6 +243,8 @@ enum UnitCommandOptions {
 		+ sizeof(struct SSetAutoRepairLevelUnitCommand) \
 		+ sizeof(struct SSetIdleModeUnitCommand) \
 		+ sizeof(struct SCustomUnitCommand) \
+		+ sizeof(struct STraceRayCommand) \
+		+ sizeof(struct SPauseCommand) \
 		)
 
 /**
@@ -1073,6 +1077,27 @@ struct SCustomUnitCommand {
 	int numParams;
 }; // COMMAND_UNIT_CUSTOM
 
+struct STraceRayCommand {
+	struct SAIFloat3 rayPos;
+	struct SAIFloat3 rayDir;
+	float rayLen;
+	int srcUID;
+	int hitUID;
+	int flags;
+}; // COMMAND_TRACE_RAY
+
+/**
+ * Pause or unpauses the game.
+ * This is meant for debugging purposes.
+ * Keep in mind that pause does not happen immediatly.
+ * It can take 1-2 frames in single- and up to 10 frames in multiplayer matches.
+ */
+struct SPauseCommand {
+	bool enable;
+	/// reason for the (un-)pause, or NULL
+	const char* reason;
+}; // COMMAND_PAUSE
+
 /**
  * @brief Sets default values
  */
@@ -1087,14 +1112,31 @@ void initSUnitCommand(void* sUnitCommand);
 struct Command;
 
 // legacy support functions
+
 /**
  * @brief Allocates memory for a C Command struct
  */
 void* mallocSUnitCommand(int unitId, int groupId, const Command* c, int* sCommandId);
+
 /**
  * @brief Frees memory of a C Command struct
  */
 void freeSUnitCommand(void* sCommandData, int sCommandId);
+
+/**
+ * Returns the engine internal C++ unit command (topic) ID
+ * that corresponds to the C AI Interface command topic ID specified by
+ * <code>aiCmdTopic</code>.
+ */
+int toInternalUnitCommandTopic(int aiCmdTopic, void* sUnitCommandData);
+
+/**
+ * Returns the C AI Interface command topic ID that corresponds
+ * to the engine internal C++ unit command (topic) ID specified by
+ * <code>internalUnitCmdTopic</code>.
+ */
+int extractAICommandTopic(const Command* internalUnitCmd);
+
 /**
  * @brief creates - with new - an engine C++ Command struct
  */

@@ -40,7 +40,7 @@
 #include <iostream>
 #include <fstream>
 
-CR_BIND_DERIVED(CSkirmishAIWrapper, CObject, (0, SkirmishAIKey()))
+CR_BIND_DERIVED(CSkirmishAIWrapper, CObject, )
 CR_REG_METADATA(CSkirmishAIWrapper, (
 	CR_MEMBER(teamId),
 	CR_MEMBER(cheatEvents),
@@ -69,9 +69,16 @@ CR_REG_METADATA(CSkirmishAIWrapper, (
 		} else throw;									\
 	}
 
+/// used only by creg
+CSkirmishAIWrapper::CSkirmishAIWrapper():
+		teamId(-1), cheatEvents(false), ai(NULL), c_callback(NULL) {}
 
-CSkirmishAIWrapper::CSkirmishAIWrapper(int teamId, const SkirmishAIKey& key)
-		: teamId(teamId), cheatEvents(false), ai(NULL), c_callback(NULL), key(key) {
+CSkirmishAIWrapper::CSkirmishAIWrapper(int teamId, const SkirmishAIKey& key):
+		teamId(teamId), cheatEvents(false), ai(NULL), c_callback(NULL), key(key) {
+	CreateCallback();
+}
+
+void CSkirmishAIWrapper::CreateCallback() {
 
 	if (c_callback == NULL) {
 		callback = new CGlobalAICallback(this);
@@ -87,12 +94,15 @@ CSkirmishAIWrapper::~CSkirmishAIWrapper() {
 
 	if (ai) {
 		Release();
-		skirmishAiCallback_release(teamId);
-		delete callback;
+
 		delete ai;
-		c_callback = NULL;
-		callback = NULL;
 		ai = NULL;
+
+		skirmishAiCallback_release(teamId);
+		c_callback = NULL;
+
+		delete callback;
+		callback = NULL;
 	}
 }
 
@@ -100,6 +110,8 @@ void CSkirmishAIWrapper::Serialize(creg::ISerializer* s) {}
 
 
 void CSkirmishAIWrapper::PostLoad() {
+
+	CreateCallback();
 	LoadSkirmishAI(true);
 }
 
@@ -125,13 +137,14 @@ bool CSkirmishAIWrapper::LoadSkirmishAI(bool postLoad) {
 	if (postLoad && !loadSupported) {
 		// fallback code to help the AI if it
 		// doesn't implement load/save support
+		Init();
 		for (size_t a = 0; a < uh->MaxUnits(); a++) {
 			if (!uh->units[a])
 				continue;
 
 			if (uh->units[a]->team == teamId) {
 				try {
-					UnitCreated(a);
+					UnitCreated(a, -1);
 				} HANDLE_EXCEPTION;
 				if (!uh->units[a]->beingBuilt)
 					try {
@@ -248,9 +261,9 @@ void CSkirmishAIWrapper::UnitIdle(int unitId) {
 	ai->HandleEvent(EVENT_UNIT_IDLE, &evtData);
 }
 
-void CSkirmishAIWrapper::UnitCreated(int unitId) {
+void CSkirmishAIWrapper::UnitCreated(int unitId, int builderId) {
 
-	SUnitCreatedEvent evtData = {unitId};
+	SUnitCreatedEvent evtData = {unitId, builderId};
 	ai->HandleEvent(EVENT_UNIT_CREATED, &evtData);
 }
 
@@ -367,7 +380,10 @@ void CSkirmishAIWrapper::PlayerCommandGiven(
 
 void CSkirmishAIWrapper::CommandFinished(int unitId, int commandTopicId) {
 
-	SCommandFinishedEvent evtData = {unitId, commandTopicId};
+	// TODO: add support for commandIds:
+	// each issued command would have its own id
+	const int commandId = -1;
+	SCommandFinishedEvent evtData = {unitId, commandId, commandTopicId};
 	ai->HandleEvent(EVENT_COMMAND_FINISHED, &evtData);
 }
 

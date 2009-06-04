@@ -39,27 +39,23 @@ CR_REG_METADATA(CSolidObject,
 CSolidObject::CSolidObject():
 	mass(100000),
 	blocking(false),
-	blockHeightChanges(false),
 	floatOnWater(false),
+	isUnderWater(false),
+	immobile(false),
+	blockHeightChanges(false),
 	xsize(1),
 	zsize(1),
 	height(1),
-
+	heading(0),
 	physicalState(Ghost),
 	midPos(pos),
-
-	immobile(false),
 	isMoving(false),
-	heading(0),
-	buildFacing(0),
 	residualImpulse(0, 0, 0),
-
 	mobility(0),
 	yardMap(0),
+	buildFacing(0),
 	isMarkedOnBlockingMap(false),
-
-	speed(0, 0, 0),
-	isUnderWater(false)
+	speed(0, 0, 0)
 {
 	mapPos = GetMapPos();
 }
@@ -121,9 +117,14 @@ bool CSolidObject::AddBuildPower(float amount, CUnit* builder) {
 
 int2 CSolidObject::GetMapPos()
 {
+	return GetMapPos(pos);
+}
+
+int2 CSolidObject::GetMapPos(const float3 &position)
+{
 	int2 p;
-	p.x = (int(pos.x + SQUARE_SIZE / 2) / SQUARE_SIZE) - xsize / 2;
-	p.y = (int(pos.z + SQUARE_SIZE / 2) / SQUARE_SIZE) - zsize / 2;
+	p.x = (int(position.x + SQUARE_SIZE / 2) / SQUARE_SIZE) - xsize / 2;
+	p.y = (int(position.z + SQUARE_SIZE / 2) / SQUARE_SIZE) - zsize / 2;
 
 	if (p.x < 0)
 		p.x = 0;

@@ -192,7 +192,7 @@ inline bool CBFGroundDrawer::BigTexSquareRowVisible(int bty) {
 	const int maxx =      mapWidth;
 	const int minz = bty * bigTexH;
 	const int maxz = minz + bigTexH;
-	const float miny = readmap->minheight;
+	const float miny = readmap->currMinHeight;
 	const float maxy = fabs(cam2->pos.y); // ??
 
 	const float3 mins(minx, miny, minz);
@@ -209,27 +209,33 @@ inline void CBFGroundDrawer::DrawGroundVertexArrayQ(CVertexArray * &ma)
 }
 
 
-inline void CBFGroundDrawer::FindRange(int &xs, int &xe, std::vector<fline> &left, std::vector<fline> &right, int y, int lod) {
+inline void CBFGroundDrawer::FindRange(int &xs, int &xe, const std::vector<fline> &left, const std::vector<fline> &right, int y, int lod) {
 	int xt0, xt1;
-	std::vector<fline>::iterator fli;
+	std::vector<fline>::const_iterator fli;
 
 	for (fli = left.begin(); fli != left.end(); fli++) {
-		float xtf = fli->base / SQUARE_SIZE + fli->dir * y;
-		xt0 = ((int)xtf) / lod * lod - lod;
-		xt1 = ((int)(xtf + fli->dir * lod)) / lod * lod - lod;
+		float xtf = fli->base + fli->dir * y;
+		xt0 = (int)xtf;
+		xt1 = (int)(xtf + fli->dir * lod);
 
 		if (xt0 > xt1)
 			xt0 = xt1;
+
+		xt0 = xt0 / lod * lod - lod;
+
 		if (xt0 > xs)
 			xs = xt0;
 	}
 	for (fli = right.begin(); fli != right.end(); fli++) {
-		float xtf = fli->base / SQUARE_SIZE + fli->dir * y;
-		xt0 = ((int)xtf) / lod * lod + lod;
-		xt1 = ((int)(xtf + fli->dir * lod)) / lod * lod + lod;
+		float xtf = fli->base + fli->dir * y;
+		xt0 = (int)xtf;
+		xt1 = (int)(xtf + fli->dir * lod);
 
 		if (xt0 < xt1)
 			xt0 = xt1;
+
+		xt0 = xt0 / lod * lod + lod;
+
 		if (xt0 < xe)
 			xe = xt0;
 	}
@@ -256,7 +262,7 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 	//! only process the necessary big squares in the x direction
 	int bigSquareSizeY = bty * bigSquareSize;
 	for (fli = left.begin(); fli != left.end(); fli++) {
-		x0 = fli->base / SQUARE_SIZE + fli->dir * bigSquareSizeY;
+		x0 = fli->base + fli->dir * bigSquareSizeY;
 		x1 = x0 + fli->dir * bigSquareSize;
 
 		if (x0 > x1)
@@ -268,7 +274,7 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 			sx = (int) x0;
 	}
 	for (fli = right.begin(); fli != right.end(); fli++) {
-		x0 = fli->base / SQUARE_SIZE + fli->dir * bigSquareSizeY + bigSquareSize;
+		x0 = fli->base + fli->dir * bigSquareSizeY + bigSquareSize;
 		x1 = x0 + fli->dir * bigSquareSize;
 
 		if (x0 < x1)
@@ -284,8 +290,6 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 	float cy2 = cam2->pos.z / SQUARE_SIZE;
 
 	for (int btx = sx; btx < ex; ++btx) {
-		SetupBigSquare(btx,bty);
-
 		ma->Initialize();
 
 		for (int lod = 1; lod < neededLod; lod <<= 1) {
@@ -351,7 +355,13 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 			for (y = ystart; y < yend; y += lod) {
 				int xs = xstart;
 				int xe = xend;
-				FindRange(xs, xe, left, right, y, lod);
+				FindRange(/*inout*/ xs, /*inout*/ xe, left, right, y, lod);
+
+				// If FindRange modifies (xs, xe) to a (less then) empty range,
+				// continue to the next row.
+				// If we'd continue, nloop (below) would become negative and we'd
+				// allocate a vertex array with negative size.  (mantis #1415)
+				if (xe < xs) continue;
 
 				int ylod = y + lod;
 				int yhlod = y + hlod;
@@ -379,8 +389,7 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 
 						DrawVertexAQ(ma, xlod, y);
 						DrawVertexAQ(ma, xlod, ylod);
-					}
-					else {
+					} else {
 						//! border between 2 different LODs
 						if ((x >= cx + vrhlod)) {
 							//! lower LOD to the right
@@ -512,12 +521,14 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 					EndStripQ(ma);
 					inStrip = false;
 				}
-			}
+			} //for (y = ystart; y < yend; y += lod)
 
 			int yst=max(ystart - lod, minty);
 			int yed=min(yend + lod, maxty);
 			int nloop=(yed-yst)/lod+1;
-			ma->EnlargeArrays(8*nloop, 2*nloop);
+
+			if (nloop > 0)
+				ma->EnlargeArrays(8*nloop, 2*nloop);
 
 			//! rita yttre begr?snings yta mot n?ta lod
 			if (maxlx < maxtx && maxlx >= mintx) {
@@ -532,16 +543,13 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 						int idx2 = CLAMP((y + lod) * heightDataX + x), idx2LOD = CLAMP(idx2 + lod);
 						int idx3 = CLAMP((y - lod) * heightDataX + x), idx3LOD = CLAMP(idx3 + lod);
 						float h = (heightData[idx3LOD] + heightData[idx2LOD]) * hmcxp +	heightData[idx1LOD] * camxpart;
-
 						DrawVertexAQ(ma, xlod, y, h);
 						DrawVertexAQ(ma, xlod, y + lod);
-					}
-					else {
+					} else {
 						int idx1 = CLAMP((y       ) * heightDataX + x), idx1LOD = CLAMP(idx1 + lod);
 						int idx2 = CLAMP((y +  lod) * heightDataX + x), idx2LOD = CLAMP(idx2 + lod);
 						int idx3 = CLAMP((y + dlod) * heightDataX + x), idx3LOD = CLAMP(idx3 + lod);
 						float h = (heightData[idx1LOD] + heightData[idx3LOD]) * hmcxp + heightData[idx2LOD] * camxpart;
-
 						DrawVertexAQ(ma, xlod, y);
 						DrawVertexAQ(ma, xlod, y + lod, h);
 					}
@@ -558,16 +566,13 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 						int idx2 = CLAMP((y + lod) * heightDataX + x);
 						int idx3 = CLAMP((y - lod) * heightDataX + x);
 						float h = (heightData[idx3] + heightData[idx2]) * hcxp + heightData[idx1] * mcxp;
-
 						DrawVertexAQ(ma, x, y, h);
 						DrawVertexAQ(ma, x, y + lod);
-					}
-					else {
+					} else {
 						int idx1 = CLAMP((y       ) * heightDataX + x);
 						int idx2 = CLAMP((y +  lod) * heightDataX + x);
 						int idx3 = CLAMP((y + dlod) * heightDataX + x);
 						float h = (heightData[idx1] + heightData[idx3]) * hcxp + heightData[idx2] * mcxp;
-
 						DrawVertexAQ(ma, x, y);
 						DrawVertexAQ(ma, x, y + lod, h);
 					}
@@ -592,11 +597,9 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 					if (x % dlod) {
 						int idx2 = CLAMP(ylhdx + x), idx2PLOD = CLAMP(idx2 + lod), idx2MLOD = CLAMP(idx2 - lod);
 						float h = (heightData[idx2MLOD] + heightData[idx2PLOD]) * hmcyp + heightData[idx2] * camypart;
-
 						DrawVertexAQ(ma, x, y);
 						DrawVertexAQ(ma, x, ylod, h);
-					}
-					else {
+					} else {
 						DrawVertexAQ(ma, x, y);
 						DrawVertexAQ(ma, x, ylod);
 					}
@@ -604,11 +607,9 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 						if (x % dlod) {
 							DrawVertexAQ(ma, x + lod, y);
 							DrawVertexAQ(ma, x + lod, ylod);
-						}
-						else {
+						} else {
 							int idx2 = CLAMP(ylhdx + x), idx2PLOD  = CLAMP(idx2 +  lod), idx2PLOD2 = CLAMP(idx2 + dlod);
 							float h = (heightData[idx2PLOD2] + heightData[idx2]) * hmcyp + heightData[idx2PLOD] * camypart;
-
 							DrawVertexAQ(ma, x + lod, y);
 							DrawVertexAQ(ma, x + lod, ylod, h);
 						}
@@ -632,11 +633,9 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 					if (x % dlod) {
 						int idx1 = CLAMP(yhdx + x), idx1PLOD = CLAMP(idx1 + lod), idx1MLOD = CLAMP(idx1 - lod);
 						float h = (heightData[idx1MLOD] + heightData[idx1PLOD]) * hcyp + heightData[idx1] * mcyp;
-
 						DrawVertexAQ(ma, x, y, h);
 						DrawVertexAQ(ma, x, ylod);
-					}
-					else {
+					} else {
 						DrawVertexAQ(ma, x, y);
 						DrawVertexAQ(ma, x, ylod);
 					}
@@ -645,21 +644,20 @@ inline void CBFGroundDrawer::DoDrawGroundRow(int bty) {
 						if (x % dlod) {
 							DrawVertexAQ(ma, x + lod, y);
 							DrawVertexAQ(ma, x + lod, ylod);
-						}
-						else {
+						} else {
 							int idx1 = CLAMP(yhdx + x), idx1PLOD  = CLAMP(idx1 +  lod), idx1PLOD2 = CLAMP(idx1 + dlod);
 							float h = (heightData[idx1PLOD2] + heightData[idx1]) * hcyp + heightData[idx1PLOD] * mcyp;
-
 							DrawVertexAQ(ma, x + lod, y, h);
 							DrawVertexAQ(ma, x + lod, ylod);
 						}
 					}
 					EndStripQ(ma);
 				}
-			} //for (y = ystart; y < yend; y += lod)
+			}
 
 		} //for (int lod = 1; lod < neededLod; lod <<= 1)
 
+		SetupBigSquare(btx,bty);
 		DrawGroundVertexArrayQ(ma);
 	}
 }
@@ -718,7 +716,14 @@ void CBFGroundDrawer::Draw(bool drawWaterReflection, bool drawUnitReflection, un
 	}
 	else {
 #endif
-		for (int bty = 0; bty < numBigTexY; ++bty) {
+		int camBty = (int)math::floor(cam2->pos.z / (bigSquareSize * SQUARE_SIZE));
+		camBty = std::max(0,std::min(numBigTexY-1, camBty ));
+
+		//! try to render in "front to back" (so start with the camera nearest BigGroundLines)
+		for (int bty = camBty; bty >= 0; --bty) {
+			DoDrawGroundRow(bty);
+		}
+		for (int bty = camBty+1; bty < numBigTexY; ++bty) {
 			DoDrawGroundRow(bty);
 		}
 #ifdef USE_GML
@@ -833,6 +838,9 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 	for (y = ystart; y < yend; y += lod) {
 		int xs = xstart;
 		int xe = xend;
+
+		if (xe < xs) continue;
+
 		int ylod = y + lod;
 		int yhlod = y + hlod;
 
@@ -852,7 +860,7 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 					}
 					DrawVertexAQ(ma, xlod, y      );
 					DrawVertexAQ(ma, xlod, ylod);
-			} 
+			}
 			else {  //! inre begr?sning mot f?eg?nde lod
 				int yhdx=ydx+x;
 				int ylhdx=yhdx+lhdx;
@@ -971,7 +979,9 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 	int yst=max(ystart - lod, minty);
 	int yed=min(yend + lod, maxty);
 	int nloop=(yed-yst)/lod+1;
-	ma->EnlargeArrays(8*nloop, 2*nloop);
+
+	if (nloop > 0)
+		ma->EnlargeArrays(8*nloop, 2*nloop);
 
 	//!rita yttre begr?snings yta mot n?ta lod
 	if(maxlx<maxtx && maxlx>=mintx){
@@ -980,15 +990,14 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 		for(y=yst;y<yed;y+=lod){
 			DrawVertexAQ(ma, x,y);
 			DrawVertexAQ(ma, x,y+lod);
-			int yhdx=y*heightDataX+x; 
+			int yhdx=y*heightDataX+x;
 			if(y%dlod){
 				float h=(heightData[yhdx-lhdx+lod]+heightData[yhdx+lhdx+lod]) * hmcxp + heightData[yhdx+lod] * camxpart;
 				DrawVertexAQ(ma, xlod,y,h);
 				DrawVertexAQ(ma, xlod,y+lod);
-			} 
-			else {
-				DrawVertexAQ(ma, xlod,y);
+			} else {
 				float h=(heightData[yhdx+lod]+heightData[yhdx+dhdx+lod]) * hmcxp + heightData[yhdx+lhdx+lod] * camxpart;
+				DrawVertexAQ(ma, xlod,y);
 				DrawVertexAQ(ma, xlod,y+lod,h);
 			}
 			EndStripQ(ma);
@@ -998,15 +1007,14 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 		x=minlx-lod;
 		int xlod = x + lod;
 		for(y=yst;y<yed;y+=lod){
-			int yhdx=y*heightDataX+x; 
+			int yhdx=y*heightDataX+x;
 			if(y%dlod){
 				float h=(heightData[yhdx-lhdx]+heightData[yhdx+lhdx]) * hcxp + heightData[yhdx] * mcxp;
 				DrawVertexAQ(ma, x,y,h);
 				DrawVertexAQ(ma, x,y+lod);
-			} 
-			else {
-				DrawVertexAQ(ma, x,y);
+			} else {
 				float h=(heightData[yhdx]+heightData[yhdx+dhdx]) * hcxp + heightData[yhdx+lhdx] * mcxp;
+				DrawVertexAQ(ma, x,y);
 				DrawVertexAQ(ma, x,y+lod,h);
 			}
 			DrawVertexAQ(ma, xlod,y);
@@ -1021,16 +1029,15 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 		if(xs<xe){
 			x=xs;
 			int ylod = y + lod;
-			int nloop=(xe-xs)/lod+2; //! one extra for if statment
+			int nloop=(xe-xs)/lod+2; //! two extra for if statment
 			ma->EnlargeArrays(2*nloop, 1);
 			int ydx=y*heightDataX;
 			if(x%dlod){
-				DrawVertexAQ(ma, x,y);
-				int ylhdx=ydx+x+lhdx; 
+				int ylhdx=ydx+x+lhdx;
 				float h=(heightData[ylhdx-lod]+heightData[ylhdx+lod]) * hmcyp + heightData[ylhdx] * camypart;
+				DrawVertexAQ(ma, x,y);
 				DrawVertexAQ(ma, x,ylod,h);
-			} 
-			else {
+			} else {
 				DrawVertexAQ(ma, x,y);
 				DrawVertexAQ(ma, x,ylod);
 			}
@@ -1038,10 +1045,9 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 				if(x%dlod){
 					DrawVertexAQ(ma, x+lod,y);
 					DrawVertexAQ(ma, x+lod,ylod);
-				} 
-				else {
+				} else {
 					DrawVertexAQ(ma, x+lod,y);
-					int ylhdx=ydx+x+lhdx; 
+					int ylhdx=ydx+x+lhdx;
 					float h=(heightData[ylhdx+dlod]+heightData[ylhdx]) * hmcyp + heightData[ylhdx+lod] * camypart;
 					DrawVertexAQ(ma, x+lod,ylod,h);
 				}
@@ -1056,7 +1062,7 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 		if(xs<xe){
 			x=xs;
 			int ylod = y + lod;
-			int nloop=(xe-xs)/lod+2; //! one extra for if statment
+			int nloop=(xe-xs)/lod+2; //! two extra for if statment
 			ma->EnlargeArrays(2*nloop, 1);
 			int ydx=y*heightDataX;
 			if(x%dlod){
@@ -1064,8 +1070,7 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 				float h=(heightData[yhdx-lod]+heightData[yhdx+lod]) * hcyp + heightData[yhdx] * mcyp;
 				DrawVertexAQ(ma, x,y,h);
 				DrawVertexAQ(ma, x,ylod);
-			} 
-			else {
+			} else {
 				DrawVertexAQ(ma, x,y);
 				DrawVertexAQ(ma, x,ylod);
 			}
@@ -1073,8 +1078,7 @@ inline void CBFGroundDrawer::DoDrawGroundShadowLOD(int nlod) {
 				if(x%dlod){
 					DrawVertexAQ(ma, x+lod,y);
 					DrawVertexAQ(ma, x+lod,ylod);
-				} 
-				else {
+				} else {
 					int yhdx=ydx+x;
 					float h=(heightData[yhdx+dlod]+heightData[yhdx]) * hcyp + heightData[yhdx+lod] * mcyp;
 					DrawVertexAQ(ma, x+lod,y,h);
@@ -1124,18 +1128,18 @@ void CBFGroundDrawer::DrawShadowPass(void)
 
 inline void CBFGroundDrawer::SetupBigSquare(const int bigSquareX, const int bigSquareY)
 {
-		//! must be in drawLos mode or shadows must be off
-		if (DrawExtraTex() || !shadowHandler->drawShadows) {
-			textures->SetTexture(bigSquareX, bigSquareY);
-			SetTexGen(1.0f / 1024, 1.0f / 1024, -bigSquareX, -bigSquareY);
+	//! must be in drawLos mode or shadows must be off
+	if (DrawExtraTex() || !shadowHandler->drawShadows) {
+		textures->SetTexture(bigSquareX, bigSquareY);
+		SetTexGen(1.0f / 1024, 1.0f / 1024, -bigSquareX, -bigSquareY);
 
-			if (overrideVP) {
-				glProgramEnvParameter4fARB(GL_VERTEX_PROGRAM_ARB, 11, -bigSquareX, -bigSquareY, 0, 0);
-			}
-		} else {
-			textures->SetTexture(bigSquareX, bigSquareY);
+		if (overrideVP) {
 			glProgramEnvParameter4fARB(GL_VERTEX_PROGRAM_ARB, 11, -bigSquareX, -bigSquareY, 0, 0);
 		}
+	} else {
+		textures->SetTexture(bigSquareX, bigSquareY);
+		glProgramEnvParameter4fARB(GL_VERTEX_PROGRAM_ARB, 11, -bigSquareX, -bigSquareY, 0, 0);
+	}
 }
 
 
@@ -1348,12 +1352,12 @@ void CBFGroundDrawer::AddFrustumRestraint(const float3& side)
 		float3 colpoint;           // a point on the collision line
 
 		if (side.y > 0)
-			colpoint = cam2->pos - c * ((cam2->pos.y - (readmap->minheight - 100)) / c.y);
+			colpoint = cam2->pos - c * ((cam2->pos.y - (readmap->currMinHeight - 100)) / c.y);
 		else
-			colpoint = cam2->pos - c * ((cam2->pos.y - (readmap->maxheight +  30)) / c.y);
+			colpoint = cam2->pos - c * ((cam2->pos.y - (readmap->currMaxHeight +  30)) / c.y);
 
 		// get intersection between colpoint and z axis
-		temp.base = colpoint.x - colpoint.z * temp.dir;
+		temp.base = (colpoint.x - colpoint.z * temp.dir) / SQUARE_SIZE;
 
 		if (b.z > 0) {
 			left.push_back(temp);
@@ -1395,7 +1399,7 @@ void CBFGroundDrawer::UpdateCamRestraints(void)
 			colpoint = cam2->pos + camHorizontal * gu->viewRange * 1.05f - c * ((cam2->pos.y - 255 / 3.5f) / c.y);
 
 		// get intersection between colpoint and z axis
-		temp.base = colpoint.x - colpoint.z * temp.dir;
+		temp.base = (colpoint.x - colpoint.z * temp.dir) / SQUARE_SIZE;
 
 		if (b.z > 0) {
 			left.push_back(temp);

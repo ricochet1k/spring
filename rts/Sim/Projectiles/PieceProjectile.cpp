@@ -61,15 +61,15 @@ void CPieceProjectile::creg_Serialize(creg::ISerializer& s)
 
 CPieceProjectile::CPieceProjectile(const float3& pos, const float3& speed, LocalModelPiece* piece, int f, CUnit* owner, float radius GML_PARG_C):
 	CProjectile(pos, speed, owner, true, false GML_PARG_P),
+	flags(f),
 	dispList(piece? piece->displist: 0),
-	drawTrail(true),
-	oldSmoke(pos),
-	curCallback(0),
 	spinPos(0),
-	age(0),
-	alphaThreshold(0.1f)
+	alphaThreshold(0.1f),
+	oldSmoke(pos),
+	drawTrail(true),
+	curCallback(0),
+	age(0)
 {
-	flags = f;
 	checkCol = false;
 
 	if (owner) {
@@ -272,7 +272,6 @@ void CPieceProjectile::Update()
 	speed *= 0.997f;
 	pos += speed;
 	spinPos += spinSpeed;
-	*numCallback = 0;
 
 	if (flags & PF_Fire && HasVertices()) {
 		OldInfo* tempOldInfo = oldInfos[7];
@@ -415,13 +414,12 @@ void CPieceProjectile::DrawOnMinimap(CVertexArray& lines, CVertexArray& points)
 
 void CPieceProjectile::DrawCallback(void)
 {
-	(*numCallback)++;
-
-	if ((*numCallback) < 2) {
+	if(*numCallback != gu->drawFrame) {
+		*numCallback = gu->drawFrame;
 		return;
 	}
+	*numCallback = 0;
 
-	(*numCallback) = 0;
 	inArray = true;
 	unsigned char col[4];
 
@@ -450,6 +448,8 @@ void CPieceProjectile::DrawCallback(void)
 
 void CPieceProjectile::DrawUnitPart(void)
 {
+	unitDrawer->SetTeamColour(colorTeam);
+
 	if (alphaThreshold != 0.1f) {
 		glPushAttrib(GL_COLOR_BUFFER_BIT);
 		glAlphaFunc(GL_GEQUAL, alphaThreshold);
@@ -470,6 +470,5 @@ void CPieceProjectile::DrawUnitPart(void)
 void CPieceProjectile::DrawS3O(void)
 {
 	// copy of CWeaponProjectile::::DrawS3O()
-	unitDrawer->SetTeamColour(colorTeam);
 	DrawUnitPart();
 }

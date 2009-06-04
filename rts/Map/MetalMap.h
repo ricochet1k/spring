@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "creg/creg.h"
+#include "creg/creg_cond.h"
 #include "Sim/Misc/GlobalConstants.h"
 
 // Each square on metalmap is a 2x2 square on normal map.
@@ -12,8 +12,9 @@ const float METAL_MAP_SQUARE_SIZE = SQUARE_SIZE * 2;
 
 class CMetalMap
 {
-public:
 	CR_DECLARE(CMetalMap);
+
+public:
 	CMetalMap(unsigned char* map, int sizeX, int sizeZ, float metalScale);
 	virtual ~CMetalMap(void);
 

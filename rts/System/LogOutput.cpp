@@ -64,7 +64,6 @@ static vector<ILogSubscriber*> subscribers;
 static const char* filename = "infolog.txt";
 static std::ofstream* filelog = 0;
 static bool initialized = false;
-static bool stdoutDebug = false;
 static boost::recursive_mutex tempstrMutex;
 static string tempstr;
 
@@ -101,23 +100,15 @@ CLogOutput::~CLogOutput()
 
 void CLogOutput::End()
 {
-	GML_STDMUTEX_LOCK(log);
+	GML_STDMUTEX_LOCK_NOPROF(log); // End
 
 	SafeDelete(filelog);
 }
 
 
-void CLogOutput::SetMirrorToStdout(bool value)
-{
-	GML_STDMUTEX_LOCK(log);
-
-	stdoutDebug = value;
-}
-
-
 void CLogOutput::SetFilename(const char* fname)
 {
-	GML_STDMUTEX_LOCK(log);
+	GML_STDMUTEX_LOCK(log); // SetFilename
 
 	assert(!initialized);
 	filename = fname;
@@ -133,8 +124,6 @@ void CLogOutput::SetFilename(const char* fname)
  */
 void CLogOutput::Initialize()
 {
-//	GML_STDMUTEX_LOCK(log);
-
 	if (initialized) return;
 
 	filelog = new std::ofstream(filename);
@@ -237,7 +226,7 @@ void CLogOutput::InitializeSubsystems()
  */
 void CLogOutput::Output(const CLogSubsystem& subsystem, const char* str)
 {
-	GML_STDMUTEX_LOCK(log);
+	GML_STDMUTEX_LOCK(log); // Output
 
 	if (!initialized) {
 		preInitLog().push_back(PreInitLogEntry(&subsystem, str));
@@ -273,22 +262,20 @@ void CLogOutput::Output(const CLogSubsystem& subsystem, const char* str)
 		filelog->flush();
 	}
 
-	if (stdoutDebug) {
-		if (subsystem.name && *subsystem.name) {
-			fputs(subsystem.name, stdout);
-			fputs(": ", stdout);
-		}
-		fputs(str, stdout);
-		if (newline)
-			putchar('\n');
-		fflush(stdout);
+	if (subsystem.name && *subsystem.name) {
+		fputs(subsystem.name, stdout);
+		fputs(": ", stdout);
 	}
+	fputs(str, stdout);
+	if (newline)
+		putchar('\n');
+	fflush(stdout);
 }
 
 
 void CLogOutput::SetLastMsgPos(const float3& pos)
 {
-	GML_STDMUTEX_LOCK(log);
+	GML_STDMUTEX_LOCK(log); // SetLastMsgPos
 
 	for(vector<ILogSubscriber*>::iterator lsi = subscribers.begin(); lsi != subscribers.end(); ++lsi)
 		(*lsi)->SetLastMsgPos(pos);
@@ -297,7 +284,7 @@ void CLogOutput::SetLastMsgPos(const float3& pos)
 
 void CLogOutput::AddSubscriber(ILogSubscriber* ls)
 {
-	GML_STDMUTEX_LOCK(log);
+	GML_STDMUTEX_LOCK(log); // AddSubscriber
 
 	subscribers.push_back(ls);
 }
@@ -305,7 +292,7 @@ void CLogOutput::AddSubscriber(ILogSubscriber* ls)
 
 void CLogOutput::RemoveAllSubscribers()
 {
-	GML_STDMUTEX_LOCK(log);
+	GML_STDMUTEX_LOCK(log); // RemoveAllSubscribers
 
 	subscribers.clear();
 }
@@ -313,7 +300,7 @@ void CLogOutput::RemoveAllSubscribers()
 
 void CLogOutput::RemoveSubscriber(ILogSubscriber *ls)
 {
-	GML_STDMUTEX_LOCK(log);
+	GML_STDMUTEX_LOCK(log); // RemoveSubscriber
 
 	subscribers.erase(std::find(subscribers.begin(), subscribers.end(), ls));
 }

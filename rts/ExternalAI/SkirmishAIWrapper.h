@@ -38,9 +38,14 @@ class float3;
  * which are then sent ot the AI.
  */
 class CSkirmishAIWrapper : public CObject, public ISkirmishAI {
-public:
+private:
 	CR_DECLARE(CSkirmishAIWrapper);
+	/// used only by creg
+	CSkirmishAIWrapper();
 
+	void CreateCallback();
+
+public:
 	CSkirmishAIWrapper(int teamId, const SkirmishAIKey& key);
 	~CSkirmishAIWrapper();
 
@@ -52,7 +57,7 @@ public:
 	virtual void Save(std::ostream *s);
 
 	virtual void UnitIdle(int unitId);
-	virtual void UnitCreated(int unitId);
+	virtual void UnitCreated(int unitId, int builderId);
 	virtual void UnitFinished(int unitId);
 	virtual void UnitDestroyed(int unitId, int attackerUnitId);
 	virtual void UnitDamaged(int unitId, int attackerUnitId, float damage, const float3& dir);

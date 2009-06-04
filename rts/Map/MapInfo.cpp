@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include <assert.h>
+#include <cstdio>
 #include "mmgr.h"
 
 #include "MapInfo.h"
@@ -16,23 +17,6 @@ using namespace std;
 
 
 static CLogSubsystem LOG_MAPINFO("mapinfo");
-
-
-float4::float4()
-{
-	float tmp[4];
-
-	// ensure alignment is correct to use it as array of floats
-	(void) tmp;
-	assert(&y - &x == &tmp[1] - &tmp[0]);
-	assert(&z - &x == &tmp[2] - &tmp[0]);
-	assert(&w - &x == &tmp[3] - &tmp[0]);
-
-	x = 0.0f;
-	y = 0.0f;
-	z = 0.0f;
-	w = 0.0f;
-}
 
 
 // before delete, the const is const_cast'ed away.

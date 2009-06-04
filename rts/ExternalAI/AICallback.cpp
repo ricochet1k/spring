@@ -641,12 +641,12 @@ bool CAICallback::IsUnitNeutral(int unitId) {
 
 int CAICallback::InitPath(float3 start, float3 end, int pathType)
 {
-	return pathManager->RequestPath(moveinfo->moveData.at(pathType),start,end);
+	return pathManager->RequestPath(moveinfo->moveData.at(pathType), start, end);
 }
 
 float3 CAICallback::GetNextWaypoint(int pathId)
 {
-	return pathManager->NextWaypoint(pathId,ZeroVector);
+	return pathManager->NextWaypoint(pathId, ZeroVector);
 }
 
 void CAICallback::FreePath(int pathId)
@@ -656,8 +656,62 @@ void CAICallback::FreePath(int pathId)
 
 float CAICallback::GetPathLength(float3 start, float3 end, int pathType)
 {
-	// return pathfinder->GetPathLength(start, end, pathType);
-	return 0;
+	const int pathID  = InitPath(start, end, pathType);
+	float     pathLen = -1.0f;
+
+	if (pathID == 0) {
+		return pathLen;
+	}
+
+	std::vector<float3> points;
+	std::vector<int>    lengths;
+
+	pathManager->GetEstimatedPath(pathID, points, lengths);
+
+	// distance to first intermediate node
+	pathLen = (points[0] - start).Length();
+
+	// we don't care which path segment has
+	// what resolution, just lump all points
+	// together
+	for (size_t i = 1; i < points.size(); i++) {
+		pathLen += (points[i] - points[i - 1]).Length();
+	}
+
+	/*
+	// this method does not work without a path-owner
+	// todo: add an alternate GPL() callback for this?
+	bool      haveNextWP = true;
+	float3    currWP     = start;
+	float3    nextWP     = start;
+
+	while (haveNextWP) {
+		nextWP = GetNextWaypoint(pathID);
+
+		if (nextWP.y == -2) {
+			// next path node not yet known
+			continue;
+		}
+
+		if (nextWP.y == -1) {
+			if (nextWP.x >= 0.0f && nextWP.z >= 0.0f) {
+				// end of path (nextWP == end)
+				pathLen += (nextWP - currWP).Length2D();
+			} else {
+				// invalid path
+				pathLen = -1.0f;
+			}
+
+			haveNextWP = false;
+		} else {
+			pathLen += (nextWP - currWP).Length2D();
+			currWP   = nextWP;
+		}
+	}
+	*/
+
+	FreePath(pathID);
+	return pathLen;
 }
 
 
@@ -919,6 +973,13 @@ const unsigned short* CAICallback::GetLosMap()
 	return &loshandler->losMap[teamHandler->AllyTeam(team)].front();
 }
 
+int CAICallback::GetLosMapResolution()
+{
+	// as this will never be called (it is implemented in CAIAICallback),
+	// it does not matter what we return here.
+	return -1;
+}
+
 const unsigned short* CAICallback::GetRadarMap()
 {
 	return &radarhandler->radarMaps[teamHandler->AllyTeam(team)].front();
@@ -1014,7 +1075,7 @@ void CAICallback::DrawUnit(const char* unitName,float3 pos,float rotation,int li
 	tdu.facing=facing;
 	std::pair<int,CUnitDrawer::TempDrawUnit> tp(gs->frameNum+lifetime,tdu);
 
-	GML_STDMUTEX_LOCK(temp); //unit); // maybe superfluous
+	GML_STDMUTEX_LOCK(temp); // DrawUnit
 
 	if(transparent)
 		unitDrawer->tempTransparentDrawUnits.insert(tp);
@@ -1300,44 +1361,78 @@ bool CAICallback::GetValue(int id, void *data)
 	}
 }
 
-int CAICallback::HandleCommand (int commandId, void *data)
+int CAICallback::HandleCommand(int commandId, void* data)
 {
-	switch (commandId)
-	{
-	case AIHCQuerySubVersionId:
-		return 1; // current version of Handle Command interface
-	case AIHCAddMapPointId:
-		net->Send(CBaseNetProtocol::Get().SendMapDrawPoint(team, (short)((AIHCAddMapPoint *)data)->pos.x, (short)((AIHCAddMapPoint *)data)->pos.z, std::string(((AIHCAddMapPoint *)data)->label)));
-		return 1;
-	case AIHCAddMapLineId:
-		net->Send(CBaseNetProtocol::Get().SendMapDrawLine(team, (short)((AIHCAddMapLine *)data)->posfrom.x, (short)((AIHCAddMapLine *)data)->posfrom.z, (short)((AIHCAddMapLine *)data)->posto.x, (short)((AIHCAddMapLine *)data)->posto.z));
-		return 1;
-	case AIHCRemoveMapPointId:
-		net->Send(CBaseNetProtocol::Get().SendMapErase(team, (short)((AIHCRemoveMapPoint *)data)->pos.x, (short)((AIHCRemoveMapPoint *)data)->pos.z));
-		return 1;
-	case AIHCSendStartPosId:
-		SendStartPos(((AIHCSendStartPos *)data)->ready,((AIHCSendStartPos *)data)->pos);
-		return 1;
-	case AIHCGetUnitDefByIdId:
-	{
-		AIHCGetUnitDefById* cmdData = (AIHCGetUnitDefById*) data;
-		cmdData->ret = GetUnitDefById(cmdData->unitDefId);
-		return 1;
-	}
-	case AIHCGetWeaponDefByIdId:
-	{
-		AIHCGetWeaponDefById* cmdData = (AIHCGetWeaponDefById*) data;
-		cmdData->ret = GetWeaponDefById(cmdData->weaponDefId);
-		return 1;
-	}
-	case AIHCGetFeatureDefByIdId:
-	{
-		AIHCGetFeatureDefById* cmdData = (AIHCGetFeatureDefById*) data;
-		cmdData->ret = GetFeatureDefById(cmdData->featureDefId);
-		return 1;
-	}
-	default:
-		return 0;
+	switch (commandId) {
+		case AIHCQuerySubVersionId:
+			return 1; // current version of Handle Command interface
+		case AIHCAddMapPointId:
+			net->Send(CBaseNetProtocol::Get().SendMapDrawPoint(team, (short)((AIHCAddMapPoint *)data)->pos.x, (short)((AIHCAddMapPoint *)data)->pos.z, std::string(((AIHCAddMapPoint *)data)->label)));
+			return 1;
+		case AIHCAddMapLineId:
+			net->Send(CBaseNetProtocol::Get().SendMapDrawLine(team, (short)((AIHCAddMapLine *)data)->posfrom.x, (short)((AIHCAddMapLine *)data)->posfrom.z, (short)((AIHCAddMapLine *)data)->posto.x, (short)((AIHCAddMapLine *)data)->posto.z));
+			return 1;
+		case AIHCRemoveMapPointId:
+			net->Send(CBaseNetProtocol::Get().SendMapErase(team, (short)((AIHCRemoveMapPoint *)data)->pos.x, (short)((AIHCRemoveMapPoint *)data)->pos.z));
+			return 1;
+		case AIHCSendStartPosId:
+			SendStartPos(((AIHCSendStartPos *)data)->ready,((AIHCSendStartPos *)data)->pos);
+			return 1;
+		case AIHCGetUnitDefByIdId: {
+			AIHCGetUnitDefById* cmdData = (AIHCGetUnitDefById*) data;
+			cmdData->ret = GetUnitDefById(cmdData->unitDefId);
+			return 1;
+		}
+		case AIHCGetWeaponDefByIdId: {
+			AIHCGetWeaponDefById* cmdData = (AIHCGetWeaponDefById*) data;
+			cmdData->ret = GetWeaponDefById(cmdData->weaponDefId);
+			return 1;
+		}
+		case AIHCGetFeatureDefByIdId: {
+			AIHCGetFeatureDefById* cmdData = (AIHCGetFeatureDefById*) data;
+			cmdData->ret = GetFeatureDefById(cmdData->featureDefId);
+			return 1;
+		}
+
+		case AIHCTraceRayId: {
+			AIHCTraceRay* cmdData = (AIHCTraceRay*) data;
+
+			if (CHECK_UNITID(cmdData->srcUID)) {
+				CUnit* srcUnit = uh->units[cmdData->srcUID];
+				CUnit* hitUnit = NULL;
+				float  realLen = 0.0f;
+				bool   haveHit = false;
+				bool   visible = true;
+
+				if (srcUnit != NULL) {
+					realLen = helper->TraceRay(cmdData->rayPos, cmdData->rayDir, cmdData->rayLen, 0.0f, srcUnit, hitUnit, cmdData->flags);
+
+					if (hitUnit != NULL) {
+						haveHit = true;
+						visible = (hitUnit->losStatus[teamHandler->AllyTeam(team)] & LOS_INLOS);
+					}
+
+					cmdData->rayLen = (           visible)? realLen:     cmdData->rayLen;
+					cmdData->hitUID = (haveHit && visible)? hitUnit->id: cmdData->hitUID;
+				}
+			}
+
+			return 1;
+		}
+
+		case AIHCPauseId: {
+			AIHCPause* cmdData = (AIHCPause*) data;
+
+			net->Send(CBaseNetProtocol::Get().SendPause(gu->myPlayerNum, cmdData->enable));
+			logOutput.Print(
+					"Skirmish AI controlling team %i paused the game, reason: %s",
+					team, cmdData->reason != NULL ? cmdData->reason : "UNSPECIFIED");
+
+			return 1;
+		}
+
+		default:
+			return 0;
 	}
 }
 

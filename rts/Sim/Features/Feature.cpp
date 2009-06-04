@@ -106,7 +106,7 @@ CFeature::~CFeature(void)
 void CFeature::PostLoad()
 {
 	def = featureHandler->GetFeatureDef(defName);
-	if (def->drawType == DRAWTYPE_3DO) {
+	if (def->drawType == DRAWTYPE_MODEL) {
 		model = LoadModel(def);
 		height = model->height;
 		SetRadius(model->radius);
@@ -133,10 +133,6 @@ void CFeature::ChangeTeam(int newTeam)
 		team = newTeam;
 		allyteam = teamHandler->AllyTeam(newTeam);
 	}
-
-	if (def->drawType == DRAWTYPE_3DO){
-		model = LoadModel(def);
-	}
 }
 
 
@@ -162,7 +158,7 @@ void CFeature::Initialize(const float3& _pos, const FeatureDef* _def, short int 
 	mass     = def->mass;
 	noSelect = def->noSelect;
 
-	if (def->drawType == DRAWTYPE_3DO) {
+	if (def->drawType == DRAWTYPE_MODEL) {
 		model = LoadModel(def);
 		height = model->height;
 		SetRadius(model->radius);
@@ -249,6 +245,10 @@ bool CFeature::AddBuildPower(float amount, CUnit* builder)
 			return false; // cant repair a 'fresh' feature
 		}
 
+		if (reclaimLeft <= 0) {
+			return false; // feature most likely has been deleted
+		}
+
 		// Work out how much to try to put back, based on the speed this unit would reclaim at.
 		const float part = amount / def->reclaimTime;
 
@@ -264,6 +264,10 @@ bool CFeature::AddBuildPower(float amount, CUnit* builder)
 			if (reclaimLeft >= 1) {
 				isRepairingBeforeResurrect = false; // They can start reclaiming it again if they so wish
 				reclaimLeft = 1;
+			} else if (reclaimLeft <= 0) {
+				// this can happen when a mod tampers the feature in AllowFeatureBuildStep
+				featureHandler->DeleteFeature(this);
+				return false;
 			}
 			return true;
 		}
@@ -292,7 +296,7 @@ bool CFeature::AddBuildPower(float amount, CUnit* builder)
 
 		const float part = (-amount) / def->reclaimTime;
 
-		if (luaRules && !luaRules->AllowFeatureBuildStep(builder, this, part)) {
+		if (luaRules && !luaRules->AllowFeatureBuildStep(builder, this, -part)) {
 			return false;
 		}
 
@@ -425,7 +429,7 @@ void CFeature::ForcedMove(const float3& newPos)
 	}
 
 	// setup midPos
-	if (def->drawType == DRAWTYPE_3DO) {
+	if (def->drawType == DRAWTYPE_MODEL) {
 		midPos = pos + model->relMidPos;
 	} else if (def->drawType == DRAWTYPE_TREE) {
 		midPos = pos + (UpVector * TREE_RADIUS);
@@ -540,24 +544,36 @@ bool CFeature::UpdatePosition()
 		}
 	} else {
 		if (pos.y > finalHeight) {
-			const float3 oldPos = pos;
+			if (def->drawType == DRAWTYPE_TREE)
+				treeDrawer->DeleteTree(pos);
 
 			if (pos.y > 0) {
-				// fall faster when above water
-				pos.y -= 0.8f;
-				midPos.y -= 0.8f;
-				transMatrix[13] -= 0.8f;
+				speed.y += mapInfo->map.gravity;
 			} else {
-				pos.y -= 0.4f;
-				midPos.y -= 0.4f;
-				transMatrix[13] -= 0.4f;
+				speed.y += mapInfo->map.gravity * 0.5;
 			}
+			pos.y += speed.y;
+			midPos.y += speed.y;
+			transMatrix[13] += speed.y;
 
-			if (def->drawType == DRAWTYPE_TREE) {
-				treeDrawer->DeleteTree(oldPos);
+			if (def->drawType == DRAWTYPE_TREE)
 				treeDrawer->AddTree(def->modelType, pos, 1.0f);
-			}
 		}
+	}
+
+	// if ground is restored, make sure feature does not get buried
+	if(pos.y < finalHeight) {
+		if (def->drawType == DRAWTYPE_TREE)
+			treeDrawer->DeleteTree(pos);
+
+		float diff = finalHeight - pos.y;
+		pos.y = finalHeight;
+		midPos.y += diff;
+		transMatrix[13] += diff;
+		speed.y = 0.0f;
+
+		if (def->drawType == DRAWTYPE_TREE)
+			treeDrawer->AddTree(def->modelType, pos, 1.0f);
 	}
 
 	isUnderWater = ((pos.y + height) < 0.0f);

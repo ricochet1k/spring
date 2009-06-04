@@ -171,8 +171,8 @@ CLuaUI::CLuaUI()
 	lua_getglobal(L, "os"); {
 		lua_pushliteral(L, "exit");      lua_pushnil(L); lua_rawset(L, -3);
 		lua_pushliteral(L, "execute");   lua_pushnil(L); lua_rawset(L, -3);
-		lua_pushliteral(L, "remove");    lua_pushnil(L); lua_rawset(L, -3);
-		lua_pushliteral(L, "rename");    lua_pushnil(L); lua_rawset(L, -3);
+		//lua_pushliteral(L, "remove");    lua_pushnil(L); lua_rawset(L, -3);
+		//lua_pushliteral(L, "rename");    lua_pushnil(L); lua_rawset(L, -3);
 		lua_pushliteral(L, "tmpname");   lua_pushnil(L); lua_rawset(L, -3);
 		lua_pushliteral(L, "getenv");    lua_pushnil(L); lua_rawset(L, -3);
 		lua_pushliteral(L, "setlocale"); lua_pushnil(L); lua_rawset(L, -3);
@@ -482,6 +482,7 @@ void CLuaUI::ShockFront(float power, const float3& pos, float areaOfEffect)
 bool CLuaUI::HasLayoutButtons()
 {
 	GML_RECMUTEX_LOCK(lua); // HasLayoutButtons
+
 	lua_checkstack(L, 2);
 
 	static const LuaHashString cmdStr("LayoutButtons");
@@ -632,10 +633,13 @@ bool CLuaUI::BuildCmdDescTable(lua_State* L,
 		lua_newtable(L); {
 			HSTR_PUSH_NUMBER(L, "id",       cmds[i].id);
 			HSTR_PUSH_NUMBER(L, "type",     cmds[i].type);
+			HSTR_PUSH_STRING(L, "name",     cmds[i].name);
+			HSTR_PUSH_STRING(L, "tooltip",  cmds[i].tooltip);
 			HSTR_PUSH_STRING(L, "action",   cmds[i].action);
 			HSTR_PUSH_STRING(L, "texture",  cmds[i].iconname);
 			HSTR_PUSH_BOOL(L,   "hidden",   cmds[i].hidden);
 			HSTR_PUSH_BOOL(L,   "disabled", cmds[i].disabled);
+			HSTR_PUSH_BOOL(L,"onlyTexture", cmds[i].onlyTexture);
 
 			HSTR_PUSH(L, "params");
 			lua_newtable(L);

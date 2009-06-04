@@ -2,12 +2,12 @@
 #include <iostream>
 #include <limits>
 
-#include "../../rts/System/DemoReader.h"
-#include "System/FileSystem/FileSystem.h"
-#include "System/ConfigHandler.h"
+#include "DemoReader.h"
+#include "FileSystem/FileSystem.h"
+#include "ConfigHandler.h"
 #include "Game/GameSetup.h"
 #include "BaseNetProtocol.h"
-#include "../../rts/System/Net/RawPacket.h"
+#include "Net/RawPacket.h"
 
 using namespace std;
 using namespace netcode;
@@ -21,19 +21,26 @@ Please note that not all NETMSG's are implemented, expand if needed.
 
 int main (int argc, char* argv[])
 {
+	if (argc <= 1)
+	{
+		cout << "Missing parameter (full path to demo file)\n";
+		return 0;
+	}
+
 	ConfigHandler::Instantiate("");
 	FileSystemHandler::Cleanup();
 	FileSystemHandler::Initialize(false);
 
 	CDemoReader reader(string(argv[1]), 0.0f);
 	DemoFileHeader header = reader.GetFileHeader();
-	
+	std::vector<unsigned> trafficCounter(55, 0);
 	while (!reader.ReachedEnd())
 	{
 		RawPacket* packet;
 		packet = reader.GetData(3.40282347e+38f);
 		if (packet == 0)
 			continue;
+		trafficCounter[packet->data[0]] += packet->length;
 		const unsigned char* buffer = packet->data;
 		switch ((unsigned char)buffer[0])
 		{
@@ -73,5 +80,11 @@ int main (int argc, char* argv[])
 		delete packet;
 	}
 	FileSystemHandler::Cleanup();
+
+	for (unsigned i = 0; i != trafficCounter.size(); ++i)
+	{
+		if (trafficCounter[i] > 0)
+			cout << "Msg " << i << ": " << trafficCounter[i] << endl;
+	}
 	return 0;
 }

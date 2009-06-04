@@ -32,7 +32,7 @@ public:
 
 	static bool inArray;
 	static CVertexArray* va;
-	static void DrawArray();
+	static int DrawArray();
 
 	virtual void Draw();
 	virtual void DrawOnMinimap(CVertexArray& lines, CVertexArray& points);
@@ -69,6 +69,8 @@ public:
 	virtual void DrawS3O() { DrawUnitPart(); }
 
 	S3DModel* s3domodel;
+
+	float tempdist; // temp distance used for sorting when rendering
 	
 private:
 	int ownerId;

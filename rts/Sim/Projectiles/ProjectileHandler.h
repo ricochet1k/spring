@@ -5,6 +5,7 @@
 //////////////////////////////////////////////////////////////////////
 
 #include <list>
+#include <set>
 #include <vector>
 
 #include <stack>
@@ -27,6 +28,10 @@ typedef std::list<CProjectile*> Projectile_List;
 typedef std::pair<CProjectile*, int> ProjectileMapPair;
 typedef std::map<int, ProjectileMapPair> ProjectileMap;
 
+class CProjectile;
+struct distcmp {
+	bool operator()(CProjectile *arg1, CProjectile *arg2);
+};
 
 class CProjectileHandler
 {
@@ -51,7 +56,8 @@ public:
 
 	void LoadSmoke(unsigned char tex[512][512][4], int xoffs, int yoffs, char* filename, char* alphafile);
 
-	void SetMaxParticles(int value);
+	void SetMaxParticles(int value) { maxParticles = value; }
+	void SetMaxNanoParticles(int value) { maxNanoParticles = value; }
 
 	void Draw(bool drawReflection, bool drawRefraction = false);
 	void DrawShadowPass(void);
@@ -65,6 +71,8 @@ public:
 	void AddFlyingPiece(float3 pos, float3 speed, S3DOPiece* object, S3DOPrimitive* piece);
 	void AddFlyingPiece(int textureType, int team, float3 pos, float3 speed, SS3OVertex* verts);
 
+	void AddRenderObjects();
+
 	struct projdist {
 		float dist;
 		CProjectile* proj;
@@ -74,14 +82,21 @@ public:
 	int maxUsedID;
 	std::list<int> freeIDs;
 	ProjectileMap weaponProjectileIDs;		// ID ==> <projectile, allyteam> map for weapon projectiles
+	std::set<CProjectile *> renderprojectiles;
+	std::set<CProjectile *> tempRenderProjectilesToBeAdded;
+	std::set<CProjectile *> renderProjectilesToBeAdded;
+	std::vector<CProjectile *> projectilesToBeDeleted;
 
-	std::vector<projdist> distlist;
+	std::set<CProjectile *,distcmp> distset;
 
 	unsigned int projectileShadowVP;
 
 	int maxParticles;						// different effects should start to cut down on unnececary(unsynced) particles when this number is reached
+	int maxNanoParticles;
 	int currentParticles;					// number of particles weighted by how complex they are
+	int currentNanoParticles;
 	float particleSaturation;				// currentParticles / maxParticles ratio
+	float nanoParticleSaturation;
 
 	int numPerlinProjectiles;
 
@@ -130,7 +145,7 @@ private:
 	void UpdatePerlin();
 	void GenerateNoiseTex(unsigned int tex,int size);
 	struct FlyingPiece{
-#if !defined(USE_MMGR)
+#if !defined(USE_MMGR) && !(defined(USE_GML) && GML_ENABLE_SIM)
 		inline void* operator new(size_t size){return mempool.Alloc(size);};
 		inline void operator delete(void* p,size_t size){mempool.Free(p,size);};
 #endif
@@ -147,18 +162,34 @@ private:
 		float rot;
 		float rotSpeed;
 	};
-	typedef std::list<FlyingPiece*> FlyingPiece_List;
-	std::list<FlyingPiece_List*> flyingPieces;
-	FlyingPiece_List * flying3doPieces;
-	// flyings3oPieces[textureType][team]
-	std::vector<std::vector<FlyingPiece_List*> > flyings3oPieces;
+	typedef std::set<FlyingPiece*> FlyingPiece_Set;
+	std::list<FlyingPiece_Set*> flyingPieces;
+	FlyingPiece_Set * flying3doPieces;
+	std::vector<std::vector<FlyingPiece_Set*> > flyings3oPieces;
+
+	struct FlyingPieceToAdd {
+		FlyingPieceToAdd() {}
+		FlyingPieceToAdd(FlyingPiece *fpi, int tex, int tm): fp(fpi), texture(tex), team(tm) {}
+		FlyingPiece *fp;
+		int texture;
+		int team;
+	};
+
+	std::vector<FlyingPiece *> tempFlying3doPiecesToAdd;
+	std::vector<FlyingPieceToAdd> tempFlyings3oPiecesToAdd;
+	std::vector<FlyingPiece *> flying3doPiecesToAdd;
+	std::vector<FlyingPieceToAdd> flyings3oPiecesToAdd;
+	std::map<FlyingPiece *, FlyingPiece_Set *> flyingPiecesToRemove;
 
 	GLuint perlinTex[8];
 	float perlinBlend[4];
 	FBO perlinFB;
 	bool drawPerlinTex;
 	std::vector<CGroundFlash*> groundFlashes;
-
+	std::set<CGroundFlash *> renderGroundFlashes;
+	std::set<CGroundFlash *> tempRenderGroundFlashesToBeAdded;
+	std::set<CGroundFlash *> renderGroundFlashesToBeAdded;
+	std::vector<CGroundFlash *> groundFlashesToBeDeleted;
 };
 
 

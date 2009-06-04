@@ -2,12 +2,12 @@
 #define INC_GLOBALAI_HDR
 
 #include "Containers.h"
+#include "CommandTracker.h"
 #include "Defines.h"
 #include "MTRand.h"
 #include "SpotFinder.h"
 #include "MicroPather.h"
 #include "Maths.h"
-#include "SunParser.h"
 #include "MetalMaker.h"
 #include "MetalMap.h"
 #include "PathFinder.h"

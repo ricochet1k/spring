@@ -57,8 +57,6 @@ CR_REG_METADATA(CBuilder, (
 				CR_MEMBER(tx1), CR_MEMBER(tx2), CR_MEMBER(tz1), CR_MEMBER(tz2),
 				CR_MEMBER(terraformCenter),
 				CR_MEMBER(terraformRadius),
-				CR_MEMBER(nextBuildType),
-				CR_MEMBER(nextBuildPos),
 				CR_ENUM_MEMBER(terraformType),
 				CR_RESERVED(12),
 				CR_POSTLOAD(PostLoad)
@@ -69,32 +67,31 @@ CR_REG_METADATA(CBuilder, (
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-CBuilder::CBuilder()
-:	range3D(true),
-  buildDistance(16),
-  buildSpeed(100),
-  repairSpeed(100),
-  reclaimSpeed(100),
-  resurrectSpeed(100),
-  captureSpeed(100),
-  terraformSpeed(100),
-  curBuild(0),
-  curReclaim(0),
-  terraforming(false),
-  myTerraformLeft(0),
-  terraformType(Terraform_Building),
-  tx1(0),
-  tx2(0),
-  tz1(0),
-  tz2(0),
-  terraformCenter(0,0,0),
-  terraformRadius(0),
-  nextBuildPos(0,0,0),
-  terraformHelp(0),
-  helpTerraform(0),
-  curResurrect(0),
-  lastResurrected(0),
-  curCapture(0)
+CBuilder::CBuilder():
+	range3D(true),
+	buildDistance(16),
+	buildSpeed(100),
+	repairSpeed(100),
+	reclaimSpeed(100),
+	resurrectSpeed(100),
+	captureSpeed(100),
+	terraformSpeed(100),
+	curResurrect(0),
+	lastResurrected(0),
+	curBuild(0),
+	curCapture(0),
+	curReclaim(0),
+	helpTerraform(0),
+	terraforming(false),
+	terraformHelp(0),
+	myTerraformLeft(0),
+	terraformType(Terraform_Building),
+	tx1(0),
+	tx2(0),
+	tz1(0),
+	tz2(0),
+	terraformCenter(0,0,0),
+	terraformRadius(0)
 {
 }
 
@@ -553,10 +550,7 @@ bool CBuilder::StartBuild(BuildInfo& buildInfo)
 	const UnitDef* unitDef = buildInfo.def;
 	SetBuildStanceToward(buildInfo.pos);
 
-	nextBuildType=buildInfo.def->name;
-	nextBuildPos=buildInfo.pos;
-
-	CUnit* b = unitLoader.LoadUnit(nextBuildType, nextBuildPos, team,
+	CUnit* b = unitLoader.LoadUnit(buildInfo.def, buildInfo.pos, team,
 	                               true, buildInfo.buildFacing, this);
 
 	// floating structures don't terraform the seabed
@@ -607,7 +601,7 @@ bool CBuilder::StartBuild(BuildInfo& buildInfo)
 		curBuild->midPos.y = groundheight + curBuild->relMidPos.y;
 	}
 	else {
-		float d=nextBuildPos.y-curBuild->pos.y;
+		float d=buildInfo.pos.y-curBuild->pos.y;
 		curBuild->pos.y+=d;
 		curBuild->midPos.y+=d;
 	}
@@ -704,37 +698,34 @@ void CBuilder::HelpTerraform(CBuilder* unit)
 
 void CBuilder::CreateNanoParticle(float3 goal, float radius, bool inverse)
 {
-	if (ph->currentParticles >= ph->maxParticles)
-		return;
+	std::vector<int> args(1, 0);
+	cob->Call("QueryNanoPiece", args);
+
 #ifdef USE_GML
 	if (gs->frameNum - lastDrawFrame > 20)
 		return;
 #endif
-	if (!unitDef->showNanoSpray)
-		return;
-
-	std::vector<int> args;
-	args.push_back(0);
-	cob->Call("QueryNanoPiece", args);
-
-	float3 relWeaponFirePos = cob->GetPiecePos(args[0]);
-	float3 weaponPos = pos + frontdir * relWeaponFirePos.z + updir * relWeaponFirePos.y + rightdir * relWeaponFirePos.x;
-
-	float3 dif = goal - weaponPos;
-	const float l = fastmath::sqrt2(dif.SqLength());
-
-	dif /= l;
-	float3 error = gu->usRandVector() * (radius / l);
-	float3 color = unitDef->nanoColor;
-
-	if (gu->teamNanospray) {
-		unsigned char* tcol = teamHandler->Team(team)->color;
-		color = float3(tcol[0] * (1.f / 255.f), tcol[1] * (1.f / 255.f), tcol[2] * (1.f / 255.f));
-	}
-
-	if (inverse) {
-		new CGfxProjectile(weaponPos + (dif + error) * l, -(dif + error) * 3, int(l / 3), color);
-	} else {
-		new CGfxProjectile(weaponPos, (dif + error) * 3, int(l / 3), color);
+	if (ph->currentNanoParticles < ph->maxNanoParticles && unitDef->showNanoSpray)
+	{
+		float3 relWeaponFirePos = cob->GetPiecePos(args[0]);
+		float3 weaponPos = pos + frontdir * relWeaponFirePos.z + updir * relWeaponFirePos.y + rightdir * relWeaponFirePos.x;
+		
+		float3 dif = goal - weaponPos;
+		const float l = fastmath::sqrt2(dif.SqLength());
+		
+		dif /= l;
+		float3 error = gu->usRandVector() * (radius / l);
+		float3 color = unitDef->nanoColor;
+		
+		if (gu->teamNanospray) {
+			unsigned char* tcol = teamHandler->Team(team)->color;
+			color = float3(tcol[0] * (1.f / 255.f), tcol[1] * (1.f / 255.f), tcol[2] * (1.f / 255.f));
+		}
+		
+		if (inverse) {
+			new CGfxProjectile(weaponPos + (dif + error) * l, -(dif + error) * 3, int(l / 3), color);
+		} else {
+			new CGfxProjectile(weaponPos, (dif + error) * 3, int(l / 3), color);
+		}
 	}
 }

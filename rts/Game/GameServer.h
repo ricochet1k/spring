@@ -4,8 +4,6 @@
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/scoped_ptr.hpp>
-#include <boost/date_time/posix_time/ptime.hpp>
-using boost::posix_time::ptime;
 #include <string>
 #include <map>
 #include <deque>
@@ -15,8 +13,10 @@ using boost::posix_time::ptime;
 #include "Console.h"
 #include "GameData.h"
 #include "PlayerBase.h"
+#include "Sim/Misc/TeamBase.h"
 #include "UnsyncedRNG.h"
-#include "SFloat3.h"
+#include "float3.h"
+#include "System/myTime.h"
 
 namespace netcode
 {
@@ -31,7 +31,11 @@ class CGameSetup;
 class ClientSetup;
 class ChatMessage;
 
-const unsigned SERVER_PLAYER = 255; //server generated message which needs a playernumber
+/**
+ * When the Server generates a message,
+ * this value is used as the sending player-number.
+ */
+const unsigned SERVER_PLAYER = 255;
 
 class GameParticipant : public PlayerBase
 {
@@ -61,12 +65,10 @@ public:
 #endif
 };
 
-class GameTeam
+class GameTeam : public TeamBase
 {
 public:
-	SFloat3 startpos;
-	bool readyToStart;
-	int allyTeam;
+	GameTeam() : active(false) {};
 	bool active;
 };
 
@@ -126,6 +128,7 @@ private:
 	void ServerReadNet();
 	void CheckForGameEnd();
 
+	/** @brief Generate a unique game identifier and sent it to all clients. */
 	void GenerateAndSendGameID();
 	std::string GetPlayerNames(const std::vector<int>& indices) const;
 
@@ -148,15 +151,15 @@ private:
 	volatile bool quitServer;
 	int serverframenum;
 
-	ptime serverStartTime;
-	ptime readyTime;
-	ptime gameStartTime;
-	ptime gameEndTime;	//Tick when game end was detected
+	spring_time serverStartTime;
+	spring_time readyTime;
+	spring_time gameStartTime;
+	spring_time gameEndTime;	//Tick when game end was detected
 	bool sentGameOverMsg;
-	ptime lastTick;
+	spring_time lastTick;
 	float timeLeft;
-	ptime lastPlayerInfo;
-	ptime lastUpdate;
+	spring_time lastPlayerInfo;
+	spring_time lastUpdate;
 	float modGameTime;
 
 	bool isPaused;

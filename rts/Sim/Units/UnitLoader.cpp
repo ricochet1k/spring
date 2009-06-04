@@ -72,21 +72,28 @@ CUnitLoader::~CUnitLoader()
 	CGroundMoveType::DeleteLineTable();
 }
 
+
 CUnit* CUnitLoader::LoadUnit(const string& name, float3 pos, int team,
                              bool build, int facing, const CUnit* builder)
 {
-//	GML_RECMUTEX_LOCK(unit); // LoadUnit. Unitinit puts unit in the quadfield and activeUnits -
-	GML_RECMUTEX_LOCK(sel); // LoadUnit. For anti deadlock purposes.
-	GML_RECMUTEX_LOCK(quad); // LoadUnit. - make sure other threads cannot access an incomplete unit
+	const UnitDef* ud = unitDefHandler->GetUnitByName(name);
+	if (ud==NULL) {
+		throw content_error("Couldn't find unittype " +  name);
+	}
 
-	CUnit* unit;
+	return LoadUnit(ud, pos, team, build, facing, builder);
+}
+
+
+CUnit* CUnitLoader::LoadUnit(const UnitDef* ud, float3 pos, int team,
+                             bool build, int facing, const CUnit* builder)
+{
+	GML_RECMUTEX_LOCK(sel); // LoadUnit - for anti deadlock purposes.
+	GML_RECMUTEX_LOCK(quad); // LoadUnit - make sure other threads cannot access an incomplete unit
 
 	SCOPED_TIMER("Unit loader");
 
-	const UnitDef* ud = unitDefHandler->GetUnitByName(name);
-	if (!ud) {
-		throw content_error("Couldn't find unittype " +  name);
-	}
+	CUnit* unit;
 
 	string type = ud->type;
 
@@ -239,7 +246,6 @@ CUnit* CUnitLoader::LoadUnit(const string& name, float3 pos, int team,
 			LogObject() << "acceleration of " << ud->name.c_str() << " is zero!!\n";
 		}
 
-		mt->moveType = ud->moveType;
 		mt->accRate = ud->maxAcc;
 		mt->decRate = ud->maxDec;
 		mt->floatOnWater = (ud->movedata->moveType == MoveData::Hover_Move ||

@@ -9,8 +9,6 @@
 EXPORT(const char* ) GetNextError();
 EXPORT(const char* ) GetSpringVersion();
 
-EXPORT(void        ) Message(const char* p_szMessage);
-
 EXPORT(int         ) Init(bool isServer, int id);
 EXPORT(void        ) UnInit();
 
@@ -25,6 +23,7 @@ EXPORT(const char* ) GetFullUnitName(int unit);
 
 EXPORT(void        ) AddArchive(const char* name);
 EXPORT(void        ) AddAllArchives(const char* root);
+EXPORT(void        ) RemoveAllArchives();
 EXPORT(unsigned int) GetArchiveChecksum(const char* arname);
 EXPORT(const char* ) GetArchivePath(const char* arname);
 
@@ -75,6 +74,7 @@ EXPORT(const char* ) GetLuaAIDesc(int aiIndex);
 EXPORT(int         ) GetMapOptionCount(const char* name);
 EXPORT(int         ) GetModOptionCount();
 EXPORT(const char* ) GetOptionKey(int optIndex);
+EXPORT(const char* ) GetOptionScope(int optIndex);
 EXPORT(const char* ) GetOptionName(int optIndex);
 EXPORT(const char* ) GetOptionSection(int optIndex);
 EXPORT(const char* ) GetOptionStyle(int optIndex);

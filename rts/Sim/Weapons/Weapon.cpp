@@ -12,6 +12,8 @@
 #include "Map/Ground.h"
 #include "myMath.h"
 #include "Rendering/UnitModels/3DOParser.h"
+#include "Sim/Misc/CollisionHandler.h"
+#include "Sim/Misc/CollisionVolume.h"
 #include "Sim/Misc/GeometricObjects.h"
 #include "Sim/Misc/InterceptHandler.h"
 #include "Sim/Misc/LosHandler.h"
@@ -110,68 +112,69 @@ CR_REG_METADATA(CWeapon,(
 
 static void ScriptCallback(int retCode,void* p1,void* p2)
 {
-	if(retCode==1)
+	if (retCode==1) {
 		((CWeapon*)p1)->ScriptReady();
+	}
 }
 
-CWeapon::CWeapon(CUnit* owner)
-:	targetType(Target_None),
+CWeapon::CWeapon(CUnit* owner):
 	owner(owner),
-	range(1),
-	heightMod(0),
+	weaponDef(0),
+	haveUserTarget(false),
+	areaOfEffect(1),
+	relWeaponPos(0,1,0),
+	weaponPos(0,0,0),
+	relWeaponMuzzlePos(0,1,0),
+	weaponMuzzlePos(0,0,0),
+	weaponDir(0,0,0),
+	muzzleFlareSize(1),
+	useWeaponPosForAim(0),
+	hasCloseTarget(false),
 	reloadTime(1),
 	reloadStatus(0),
-	salvoLeft(0),
+	range(1),
+	heightMod(0),
+	projectileSpeed(1),
+	accuracy(0),
+	sprayAngle(0),
 	salvoDelay(0),
 	salvoSize(1),
 	nextSalvo(0),
-	predict(0),
+	salvoLeft(0),
+	salvoError(0,0,0),
+	targetType(Target_None),
 	targetUnit(0),
-	accuracy(0),
-	projectileSpeed(1),
+	targetPos(1,1,1),
+	lastTargetRetry(-100),
+	predict(0),
 	predictSpeedMod(1),
 	metalFireCost(0),
 	energyFireCost(0),
-	targetPos(1,1,1),
 	fireSoundId(0),
 	fireSoundVolume(0),
 	cobHasBlockShot(false),
 	hasTargetWeight(false),
 	angleGood(false),
 	avoidTarget(false),
+	subClassReady(true),
+	onlyForward(false),
 	maxAngleDif(0),
 	wantedDir(0,1,0),
 	lastRequestedDir(0,-1,0),
-	haveUserTarget(false),
-	subClassReady(true),
-	onlyForward(false),
-	weaponPos(0,0,0),
-	weaponMuzzlePos(0,0,0),
-	weaponDir(0,0,0),
 	lastRequest(0),
-	relWeaponPos(0,1,0),
-	relWeaponMuzzlePos(0,1,0),
-	muzzleFlareSize(1),
-	lastTargetRetry(-100),
-	areaOfEffect(1),
 	badTargetCategory(0),
 	onlyTargetCategory(0xffffffff),
-	weaponDef(0),
+	interceptTarget(0),
 	stockpileTime(1),
 	buildPercent(0),
 	numStockpiled(0),
 	numStockpileQued(0),
-	interceptTarget(0),
-	salvoError(0,0,0),
-	sprayAngle(0),
-	useWeaponPosForAim(0),
 	errorVector(ZeroVector),
 	errorVectorAdd(ZeroVector),
 	lastErrorVectorUpdate(0),
 	slavedTo(0),
 	mainDir(0,0,1),
 	maxMainDirAngleDif(-1),
-	hasCloseTarget(false),
 	avoidFriendly(true),
 	avoidFeature(true),
 	avoidNeutral(true),
@@ -344,8 +347,8 @@ void CWeapon::Update()
 	    && (reloadStatus <= gs->frameNum)
 	    && (!weaponDef->stockpile || numStockpiled)
 	    && (weaponDef->fireSubmersed || (weaponMuzzlePos.y > 0))
-	    && ((owner->unitDef->maxFuel == 0) || (owner->currentFuel > 0) || (fuelUsage == 0)
-	    && !isBeingServicedOnPad(owner))
+	    && ((((owner->unitDef->maxFuel == 0) || (owner->currentFuel > 0) || (fuelUsage == 0)) &&
+	       !isBeingServicedOnPad(owner)))
 	   )
 	{
 		if ((weaponDef->stockpile ||
@@ -412,8 +415,8 @@ void CWeapon::Update()
 			// add to the commandShotCount if this is the last salvo,
 			// and it is being directed towards the current target
 			// (helps when deciding if a queued ground attack order has been completed)
-			if ((salvoLeft == 0) && (owner->commandShotCount >= 0) &&
-			    ((targetType == Target_Pos) && (targetPos == owner->userAttackPos)) ||
+			if (((salvoLeft == 0) && (owner->commandShotCount >= 0) &&
+			    ((targetType == Target_Pos) && (targetPos == owner->userAttackPos))) ||
 					((targetType == Target_Unit) && (targetUnit == owner->userTarget))) {
 				owner->commandShotCount++;
 			}
@@ -722,55 +725,82 @@ void CWeapon::DependentDied(CObject *o)
 		interceptTarget = 0;
 }
 
-bool CWeapon::TryTarget(const float3 &pos,bool userTarget,CUnit* unit)
+bool CWeapon::TryTarget(const float3& pos, bool userTarget, CUnit* unit)
 {
 	if (unit && !(onlyTargetCategory & unit->category)) {
 		return false;
 	}
 
-	if(unit && ((unit->isDead   && (modInfo.fireAtKilled==0)) ||
-	            (unit->crashing && (modInfo.fireAtCrashing==0)))) {
+	if (unit && ((unit->isDead  && (modInfo.fireAtKilled   == 0)) ||
+	            (unit->crashing && (modInfo.fireAtCrashing == 0)))) {
 		return false;
 	}
 	if (weaponDef->stockpile && !numStockpiled) {
 		return false;
 	}
 
-	float3 dif=pos-weaponMuzzlePos;
-	float heightDiff; // negative when target below owner
 
-	if (targetBorder != 0 && unit) {
-		float3 diff(dif);
-		diff.Normalize();
-		// weapon inside target sphere
-		if (dif.SqLength() < unit->sqRadius*targetBorder*targetBorder) {
-			dif -= diff*(dif.Length() - 10); // a hack
-			//LogObject() << "inside\n";
+	float3 dif = pos - weaponMuzzlePos;
+	float heightDiff = 0.0f; // negative when target below owner
+	const float absTB = streflop::fabsf(targetBorder);
+
+	if (targetBorder != 0.0f && unit) {
+		float3 difDir(dif);
+		difDir.Normalize();
+
+
+		CollisionVolume* cvOld = unit->collisionVolume;
+		CollisionVolume  cvNew = CollisionVolume(unit->collisionVolume);
+		CollisionQuery   cq;
+
+		cvNew.RescaleAxes(absTB, absTB, absTB);
+		cvNew.SetTestType(COLVOL_TEST_DISC);
+
+		unit->collisionVolume = &cvNew;
+
+		if (CCollisionHandler::DetectHit(unit, weaponMuzzlePos, ZeroVector, NULL)) {
+			// weapon inside target unit's volume, no
+			// real need to calculate penetration depth
+			dif = ZeroVector;
 		} else {
-			dif -= diff*(unit->radius*targetBorder);
-			//LogObject() << "outside\n";
+			// raytrace to find the proper correction
+			// factor for non-spherical volumes based
+			// on ingress position
+			cvNew.SetTestType(COLVOL_TEST_CONT);
+
+			// intersection is not guaranteed if the
+			// volume has an offset, since here we're
+			// shooting at the target's midpoint
+			if (CCollisionHandler::DetectHit(unit, weaponMuzzlePos, pos + (difDir * cvNew.GetBoundingRadius() * 2.0f), &cq)) {
+				if (targetBorder > 0.0f) { dif -= (difDir * ((pos - cq.p0).Length())); }
+				if (targetBorder < 0.0f) { dif += (difDir * ((cq.p1 - pos).Length())); }
+			}
 		}
-		//geometricObjects->AddLine(weaponMuzzlePos, weaponMuzzlePos+dif, 3, 0, 16);
+
+		unit->collisionVolume = cvOld;
+
+
 		heightDiff = (weaponPos.y + dif.y) - owner->pos.y;
 	} else {
 		heightDiff = pos.y - owner->pos.y;
 	}
 
+
 	float r;
-	if (!unit || cylinderTargetting < 0.01) {
-		r=GetRange2D(heightDiff*heightMod);
+	if (!unit || cylinderTargetting < 0.01f) {
+		r = GetRange2D(heightDiff * heightMod);
 	} else {
-		if (cylinderTargetting * range > fabs(heightDiff)*heightMod) {
+		if (cylinderTargetting * range > fabs(heightDiff) * heightMod) {
 			r = GetRange2D(0);
 		} else {
 			r = 0;
 		}
 	}
 
-	if(dif.SqLength2D()>=r*r)
+	if (dif.SqLength2D() >= r * r)
 		return false;
 
-	if(maxMainDirAngleDif>-0.999f){
+	if (maxMainDirAngleDif > -0.999f) {
 		dif.Normalize();
 		float3 modMainDir=owner->frontdir*mainDir.z+owner->rightdir*mainDir.x+owner->updir*mainDir.y;
 

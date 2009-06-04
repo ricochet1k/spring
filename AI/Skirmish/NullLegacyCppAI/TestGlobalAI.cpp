@@ -5,6 +5,7 @@
 #include "TestGlobalAI.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 #include "ExternalAI/IGlobalAICallback.h"
 #include "Sim/Units/UnitDef.h"
 #include "CUtils/Util.h" // we only use the defines
@@ -35,7 +36,7 @@ void TestGlobalAI::InitAI(IGlobalAICallback* callback, int team)
 	this->callback=callback;
 }
 
-void TestGlobalAI::UnitCreated(int unit)
+void TestGlobalAI::UnitCreated(int unit, int builder)
 {
 	myUnits.insert(unit);
 }

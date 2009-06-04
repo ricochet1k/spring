@@ -14,7 +14,7 @@
 #include "mmgr.h"
 #include "creg/STL_List.h"
 
-CR_BIND_DERIVED(CGroup,CObject,(0,NULL))
+CR_BIND(CGroup, (0,NULL))
 
 CR_REG_METADATA(CGroup, (
 				CR_MEMBER(id),
@@ -87,7 +87,6 @@ void CGroup::Update()
 
 void CGroup::DrawCommands()
 {
-//	GML_STDMUTEX_LOCK(cai); // DrawCommands. Not needed, protected via CGroupHandler
 	// last check is a hack so globalai groups dont get erased
 	if(units.empty() && id>=10 && /*handler==grouphandler*/handler->team==gu->myTeam) {
 		handler->RemoveGroup(this);
@@ -114,10 +113,10 @@ int CGroup::GetDefaultCmd(CUnit *unit,CFeature* feature)
 void CGroup::GiveCommand(Command c)
 {
 	// There are no commands that a group could receive
-	// TODO: possible FIXME: if commands were passed on to groupAIs and from them to the units in hte group, we would have to do that here too
+	// TODO: possible FIXME: if commands were passed on to groupAIs and from them to the units in the group, we would have to do that here too
 }
 
-void CGroup::CommandFinished(int unit,int type)
+void CGroup::CommandFinished(int unitId, int commandTopicId)
 {
 }
 

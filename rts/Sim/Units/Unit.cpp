@@ -88,103 +88,73 @@ float CUnit::expReloadScale = 0.4f;
 float CUnit::expGrade = 0.0f;
 
 
-CUnit::CUnit ()
-:	unitDef(0),
+CUnit::CUnit():
+	unitDef(0),
 	collisionVolume(0),
 	team(0),
-	maxHealth(100),
-	health(100),
-	travel(0.0f),
-	travelPeriod(0.0f),
-	power(100),
-	experience(0),
-	limExperience(0),
-	neutral(false),
-	armorType(0),
-	soloBuilder(NULL),
-	beingBuilt(true),
 	allyteam(0),
-	restTime(0),
-	controlRadius(2),
-	reloadSpeed(1),
-	commandAI(0),
-	tempNum(0),
-	losRadius(0),
-	airLosRadius(0),
-	losHeight(0),
-	metalCost(100),
-	energyCost(0),
-	buildTime(100),
 	frontdir(0,0,1),
 	rightdir(-1,0,0),
 	updir(0,1,0),
 	upright(true),
-	falling(false),
-	fallSpeed(0.2),
-	inAir(false),
-	inWater(false),
-	maxRange(0),
-	haveTarget(false),
-	lastAttacker(0),
-	lastAttackedPiece(0),
-	lastAttackedPieceFrame(-1),
-	lastAttack(-200),
-	userTarget(0),
-	userAttackGround(false),
-	commandShotCount(-1),
-	lastLosUpdate(0),
-	fireState(2),
-	moveState(0),
-	lastSlowUpdate(0),
-	los(0),
-	userAttackPos(0,0,0),
-	crashing(false),
-	cob(NULL),
-	script(NULL),
-	flankingBonusMode(0),
-	flankingBonusDir(1.0f, 0.0f, 0.0f),
-	flankingBonusAvgDamage(1.4f),
-	flankingBonusDifDamage(0.5f),
-	flankingBonusMobility(10.0f),
-	flankingBonusMobilityAdd(0.01f),
-	group(0),
-	lastDamage(-100),
-	lastFireWeapon(0),
-	lastMuzzleFlameSize(0),
-	lastMuzzleFlameDir(0,1,0),
-	category(0),
-	recentDamage(0),
-	armoredState(false),
-	armoredMultiple(1),
-	curArmorMultiple(1),
+	relMidPos(0,0,0),
+	travel(0.0f),
+	travelPeriod(0.0f),
+	power(100),
+	maxHealth(100),
+	health(100),
+	paralyzeDamage(0),
+	captureProgress(0),
+	experience(0),
+	limExperience(0),
+	neutral(false),
+	soloBuilder(NULL),
+	beingBuilt(true),
+	lastNanoAdd(gs->frameNum),
+	repairAmount(0.0f),
+	transporter(0),
+	toBeTransported(false),
 	buildProgress(0),
 	groundLevelled(true),
 	terraformLeft(0),
 	realLosRadius(0),
 	realAirLosRadius(0),
+	losStatus(teamHandler->ActiveAllyTeams(), 0),
 	inBuildStance(false),
-	isDead(false),
-	nextPosErrorUpdate(1),
-	posErrorDelta(0,0,0),
-	transporter(0),
-	toBeTransported(false),
-	hasUWWeapons(false),
-	lastNanoAdd(gs->frameNum),
-	cloakTimeout(128),
-	curCloakTimeout(gs->frameNum),
-	isCloaked(false),
-	wantCloak(false),
-	scriptCloak(0),
-	decloakDistance(0.0f),
+	stunned(false),
+	useHighTrajectory(false),
+	dontUseWeapons(false),
+	deathScriptFinished(false),
+	deathCountdown(0),
+	delayedWreckLevel(-1),
+	restTime(0),
 	shieldWeapon(0),
 	stockpileWeapon(0),
+	reloadSpeed(1),
+	maxRange(0),
+	haveTarget(false),
 	haveDGunRequest(false),
-	jammerRadius(0),
-	sonarJamRadius(0),
+	lastMuzzleFlameSize(0),
+	lastMuzzleFlameDir(0,1,0),
+	armorType(0),
+	category(0),
+	los(0),
+	tempNum(0),
+	lastSlowUpdate(0),
+	controlRadius(2),
+	losRadius(0),
+	airLosRadius(0),
+	losHeight(0),
+	lastLosUpdate(0),
 	radarRadius(0),
 	sonarRadius(0),
+	jammerRadius(0),
+	sonarJamRadius(0),
 	hasRadarCapacity(false),
-	stunned(false),
+	prevMoveType(NULL),
+	usingScriptMoveType(false),
+	commandAI(0),
+	group(0),
 	condUseMetal(0.0f),
 	condUseEnergy(0.0f),
 	condMakeMetal(0.0f),
@@ -207,23 +177,55 @@ CUnit::CUnit ()
 	energyMakeold(0),
 	energyTickMake(0),
 	metalExtract(0),
+	metalCost(100),
+	energyCost(0),
+	buildTime(100),
 	metalStorage(0),
 	energyStorage(0),
+	lastAttacker(0),
+	lastAttackedPiece(0),
+	lastAttackedPieceFrame(-1),
+	lastAttack(-200),
+	lastFireWeapon(0),
+	recentDamage(0),
+	userTarget(0),
+	userAttackPos(0,0,0),
+	userAttackGround(false),
+	commandShotCount(-1),
+	fireState(2),
+	dontFire(false),
+	moveState(0),
+	cob(NULL),
+	script(NULL),
+	crashing(false),
+	isDead(false),
+	falling(false),
+	fallSpeed(0.2),
+	inAir(false),
+	inWater(false),
+	flankingBonusMode(0),
+	flankingBonusDir(1.0f, 0.0f, 0.0f),
+	flankingBonusMobility(10.0f),
+	flankingBonusMobilityAdd(0.01f),
+	flankingBonusAvgDamage(1.4f),
+	flankingBonusDifDamage(0.5f),
+	armoredState(false),
+	armoredMultiple(1),
+	curArmorMultiple(1),
+	posErrorDelta(0,0,0),
+	nextPosErrorUpdate(1),
+	hasUWWeapons(false),
+	wantCloak(false),
+	scriptCloak(0),
+	cloakTimeout(128),
+	curCloakTimeout(gs->frameNum),
+	isCloaked(false),
+	decloakDistance(0.0f),
 	lastTerrainType(-1),
 	curTerrainType(0),
-	relMidPos(0,0,0),
 	selfDCountdown(0),
-	useHighTrajectory(false),
-	deathCountdown(0),
-	delayedWreckLevel(-1),
-	paralyzeDamage(0),
-	captureProgress(0),
-	repairAmount(0.0f),
 	myTrack(0),
 	lastFlareDrop(0),
-	dontFire(false),
-	deathScriptFinished(false),
-	dontUseWeapons(false),
 	currentFuel(0),
 	luaDraw(false),
 	noDraw(false),
@@ -231,16 +233,13 @@ CUnit::CUnit ()
 	noMinimap(false),
 	isIcon(false),
 	iconRadius(0),
-	prevMoveType(NULL),
-	usingScriptMoveType(false),
 	lodCount(0),
 	currentLOD(0),
 	alphaThreshold(0.1f),
-	cegDamage(1),
+	cegDamage(1)
 #ifdef USE_GML
-	lastDrawFrame(-30),
+	, lastDrawFrame(-30)
 #endif
-	losStatus(teamHandler->ActiveAllyTeams(), 0)
 {
 #ifdef DIRECT_CONTROL_ALLOWED
 	directControl = NULL;
@@ -351,7 +350,7 @@ void CUnit::UnitInit(const UnitDef* def, int Team, const float3& position)
 	mapSquare = ground->GetSquare(pos);
 	uh->AddUnit(this);
 	qf->MovedUnit(this);
-	oldRadarPos.x = -1;
+	hasRadarPos = false;
 
 	losStatus[allyteam] = LOS_ALL_MASK_BITS |
 		LOS_INLOS | LOS_INRADAR | LOS_PREVLOS | LOS_CONTRADAR;
@@ -700,7 +699,7 @@ void CUnit::SlowUpdate()
 	repairAmount=0.0f;
 
 	if (paralyzeDamage > 0) {
-		paralyzeDamage -= maxHealth * (16.0f / 30.0f / 40.0f);
+		paralyzeDamage -= maxHealth * (16.0f / GAME_SPEED / 40.0f);
 		if (paralyzeDamage < 0) {
 			paralyzeDamage = 0;
 		}
@@ -756,9 +755,13 @@ void CUnit::SlowUpdate()
 			}
 			UpdateResources();
 		}
+
+		// damage nano-frames too
+		DoWaterDamage();
 		return;
 	}
-	//below is stuff that shouldnt be run while being built
+
+	// below is stuff that should not be run while being built
 
 	lastSlowUpdate=gs->frameNum;
 
@@ -861,20 +864,7 @@ void CUnit::SlowUpdate()
 		}
 	}
 
-	if (uh->waterDamage) {
-		if (pos.IsInBounds()) {
-			bool inWater = (pos.y <= -3);
-			bool isFloating = (physicalState == CSolidObject::Floating);
-			bool onGround = (physicalState == CSolidObject::OnGround);
-			bool isWaterSquare = (readmap->mipHeightmap[1][int((pos.z / (SQUARE_SIZE * 2)) * gs->hmapx + (pos.x / (SQUARE_SIZE * 2)))] < -1);
-
-			// old: "floating or (on ground and height < -3 and mapheight < -1)"
-			// new: "height < -3 and (floating or on ground) and mapheight < -1"
-			if (inWater && (isFloating || onGround) && isWaterSquare) {
-				DoDamage(DamageArray() * uh->waterDamage, 0, ZeroVector, -1);
-			}
-		}
-	}
+	DoWaterDamage();
 
 	if (unitDef->canKamikaze) {
 		if (fireState >= 2) {
@@ -945,6 +935,24 @@ void CUnit::SetDirectionFromHeading(void)
 	}
 }
 
+
+
+void CUnit::DoWaterDamage()
+{
+	if (uh->waterDamage > 0.0f) {
+		if (pos.IsInBounds()) {
+			const int  px            = int(pos.x / (SQUARE_SIZE * 2));
+			const int  pz            = int(pos.z / (SQUARE_SIZE * 2));
+			const bool isFloating    = (physicalState == CSolidObject::Floating);
+			const bool onGround      = (physicalState == CSolidObject::OnGround);
+			const bool isWaterSquare = (readmap->mipHeightmap[1][pz * gs->hmapx + px] <= 0.0f);
+
+			if ((pos.y <= 0.0f) && isWaterSquare && (isFloating || onGround)) {
+				DoDamage(DamageArray() * uh->waterDamage, 0, ZeroVector, -1);
+			}
+		}
+	}
+}
 
 void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& impulse, int weaponId)
 {
@@ -1044,19 +1052,16 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 		experienceMod *= 0.1f; // reduced experience
 		if (damage > 0.0f) {
 			const float maxParaDmg = health + (maxHealth * 0.025f * (float)paralyzeTime);
-			if (paralyzeDamage >= maxParaDmg) {
+			if (paralyzeDamage >= maxParaDmg || stunned) {
 				experienceMod = 0.0f;
 			}
-			else {
-				if (stunned) {
-					experienceMod = 0.0f;
-				}
-				paralyzeDamage += damage;
-				if (paralyzeDamage > health) {
-					stunned = true;
-				}
-				paralyzeDamage = std::min(paralyzeDamage, maxParaDmg);
+
+			paralyzeDamage += damage;
+			if (paralyzeDamage > health) {
+				stunned = true;
 			}
+			paralyzeDamage = std::min(paralyzeDamage, maxParaDmg);
+
 		}
 		else { // paralyzation healing
 			if (paralyzeDamage <= 0.0f) {
@@ -1126,10 +1131,13 @@ void CUnit::DoDamage(const DamageArray& damages, CUnit *attacker,const float3& i
 #endif
 }
 
+
+
 void CUnit::Kill(float3& impulse) {
 	DamageArray da;
 	DoDamage(da * (health / da[armorType]), 0, impulse, -1);
 }
+
 
 
 void CUnit::UpdateDrawPos() {
@@ -1632,7 +1640,7 @@ void CUnit::Init(const CUnit* builder)
 	}
 
 	eventHandler.UnitCreated(this, builder);
-	eoh->UnitCreated(*this); // FIXME -- add builder?
+	eoh->UnitCreated(*this, builder);
 }
 
 
@@ -1689,6 +1697,7 @@ bool CUnit::SetGroup(CGroup* newGroup)
 			group=0;									//group ai didnt accept us
 			return false;
 		} else { // add us to selected units if group is selected
+
 			GML_RECMUTEX_LOCK(sel); // SetGroup
 
 			if(selectedUnits.selectedGroup == group->id)
@@ -2309,6 +2318,7 @@ void CUnit::StopAttackingAllyTeam(int ally)
 CR_REG_METADATA(CUnit, (
 	//CR_MEMBER(unitDef),
 	CR_MEMBER(unitDefName),
+	CR_MEMBER(collisionVolume),
 	CR_MEMBER(team),
 	CR_MEMBER(allyteam),
 	CR_MEMBER(lineage),
@@ -2318,19 +2328,14 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(updir),
 	CR_MEMBER(upright),
 	CR_MEMBER(relMidPos),
-	CR_MEMBER(power),
-	CR_MEMBER(luaDraw),
-	CR_MEMBER(noDraw),
-	CR_MEMBER(noSelect),
-	CR_MEMBER(noMinimap),
+	CR_MEMBER(deathSpeed),
 	CR_MEMBER(travel),
 	CR_MEMBER(travelPeriod),
-	CR_RESERVED(8),
-
-	CR_MEMBER(maxHealth),
-	CR_MEMBER(health),
+	CR_MEMBER(power),
 	CR_MEMBER(paralyzeDamage),
 	CR_MEMBER(captureProgress),
+	CR_MEMBER(maxHealth),
+	CR_MEMBER(health),
 	CR_MEMBER(experience),
 	CR_MEMBER(limExperience),
 	CR_MEMBER(neutral),
@@ -2341,20 +2346,19 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(transporter),
 	CR_MEMBER(toBeTransported),
 	CR_MEMBER(buildProgress),
+	CR_MEMBER(groundLevelled),
+	CR_MEMBER(terraformLeft),
 	CR_MEMBER(realLosRadius),
 	CR_MEMBER(realAirLosRadius),
 	CR_MEMBER(losStatus),
 	CR_MEMBER(inBuildStance),
 	CR_MEMBER(stunned),
 	CR_MEMBER(useHighTrajectory),
-	CR_MEMBER(groundLevelled),
-	CR_MEMBER(terraformLeft),
-	CR_RESERVED(11),
-
+	CR_MEMBER(dontUseWeapons),
+	CR_MEMBER(deathScriptFinished),
 	CR_MEMBER(deathCountdown),
 	CR_MEMBER(delayedWreckLevel),
 	CR_MEMBER(restTime),
-
 	CR_MEMBER(weapons),
 	CR_MEMBER(shieldWeapon),
 	CR_MEMBER(stockpileWeapon),
@@ -2365,43 +2369,36 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(haveDGunRequest),
 	CR_MEMBER(lastMuzzleFlameSize),
 	CR_MEMBER(lastMuzzleFlameDir),
-	CR_RESERVED(16),
-
 	CR_MEMBER(armorType),
 	CR_MEMBER(category),
-
 	CR_MEMBER(quads),
 	CR_MEMBER(los),
 	CR_MEMBER(tempNum),
 	CR_MEMBER(lastSlowUpdate),
 	CR_MEMBER(mapSquare),
-
 	CR_MEMBER(controlRadius),
 	CR_MEMBER(losRadius),
 	CR_MEMBER(airLosRadius),
 	CR_MEMBER(losHeight),
 	CR_MEMBER(lastLosUpdate),
-	CR_RESERVED(16),
-
 	CR_MEMBER(radarRadius),
 	CR_MEMBER(sonarRadius),
 	CR_MEMBER(jammerRadius),
 	CR_MEMBER(sonarJamRadius),
+	CR_MEMBER(seismicRadius),
+	CR_MEMBER(seismicSignature),
 	CR_MEMBER(hasRadarCapacity),
 	CR_MEMBER(radarSquares),
 	CR_MEMBER(oldRadarPos.x),
 	CR_MEMBER(oldRadarPos.y),
+	CR_MEMBER(hasRadarPos),
 	CR_MEMBER(stealth),
 	CR_MEMBER(sonarStealth),
-	CR_RESERVED(15),
-
-	CR_MEMBER(commandAI),
 	CR_MEMBER(moveType),
 	CR_MEMBER(prevMoveType),
 	CR_MEMBER(usingScriptMoveType),
+	CR_MEMBER(commandAI),
 	CR_MEMBER(group),
-	CR_RESERVED(16),
-
 	CR_MEMBER(condUseMetal),
 	CR_MEMBER(condUseEnergy),
 	CR_MEMBER(condMakeMetal),
@@ -2410,113 +2407,106 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(uncondUseEnergy),
 	CR_MEMBER(uncondMakeMetal),
 	CR_MEMBER(uncondMakeEnergy),
-
 	CR_MEMBER(metalUse),
 	CR_MEMBER(energyUse),
 	CR_MEMBER(metalMake),
 	CR_MEMBER(energyMake),
-
 	CR_MEMBER(metalUseI),
 	CR_MEMBER(energyUseI),
 	CR_MEMBER(metalMakeI),
 	CR_MEMBER(energyMakeI),
-
 	CR_MEMBER(metalUseold),
 	CR_MEMBER(energyUseold),
 	CR_MEMBER(metalMakeold),
 	CR_MEMBER(energyMakeold),
 	CR_MEMBER(energyTickMake),
-
 	CR_MEMBER(metalExtract),
 	CR_MEMBER(metalCost),
 	CR_MEMBER(energyCost),
 	CR_MEMBER(buildTime),
-	CR_RESERVED(16),
-
 	CR_MEMBER(metalStorage),
 	CR_MEMBER(energyStorage),
-
 	CR_MEMBER(lastAttacker),
 	// CR_MEMBER(lastAttackedPiece),
 	CR_MEMBER(lastAttackedPieceFrame),
 	CR_MEMBER(lastAttack),
-	CR_MEMBER(lastDamage),
 	CR_MEMBER(lastFireWeapon),
 	CR_MEMBER(recentDamage),
 	CR_MEMBER(userTarget),
 	CR_MEMBER(userAttackPos),
-
 	CR_MEMBER(userAttackGround),
 	CR_MEMBER(commandShotCount),
 	CR_MEMBER(fireState),
 	CR_MEMBER(dontFire),
 	CR_MEMBER(moveState),
-
 	CR_MEMBER(activated),
-
-	CR_RESERVED(32),
+//	CR_MEMBER(drawPos), ??
+//	CR_MEMBER(drawMidPos), ??
+//#if defined(USE_GML) && GML_ENABLE_SIM
+//	CR_MEMBER(lastUnitUpdate),
+//#endif
 	//CR_MEMBER(model),
+	//CR_MEMBER(localmodel),
 	//CR_MEMBER(cob),
 	//CR_MEMBER(script),
-	//CR_MEMBER(localmodel),
-
 	CR_MEMBER(tooltip),
 	CR_MEMBER(crashing),
 	CR_MEMBER(isDead),
 	CR_MEMBER(falling),
 	CR_MEMBER(fallSpeed),
-	CR_MEMBER(fallSpeed),
-	CR_MEMBER(fallSpeed),
-
+	CR_MEMBER(inAir),
+	CR_MEMBER(inWater),
 	CR_MEMBER(flankingBonusMode),
 	CR_MEMBER(flankingBonusDir),
-	CR_MEMBER(flankingBonusAvgDamage),
-	CR_MEMBER(flankingBonusDifDamage),
 	CR_MEMBER(flankingBonusMobility),
 	CR_MEMBER(flankingBonusMobilityAdd),
-
+	CR_MEMBER(flankingBonusAvgDamage),
+	CR_MEMBER(flankingBonusDifDamage),
 	CR_MEMBER(armoredState),
 	CR_MEMBER(armoredMultiple),
 	CR_MEMBER(curArmorMultiple),
-	CR_RESERVED(16),
-
 	CR_MEMBER(wreckName),
 	CR_MEMBER(posErrorVector),
 	CR_MEMBER(posErrorDelta),
 	CR_MEMBER(nextPosErrorUpdate),
-
 	CR_MEMBER(hasUWWeapons),
-
 	CR_MEMBER(wantCloak),
 	CR_MEMBER(scriptCloak),
 	CR_MEMBER(cloakTimeout),
 	CR_MEMBER(curCloakTimeout),
 	CR_MEMBER(isCloaked),
 	CR_MEMBER(decloakDistance),
-
 	CR_MEMBER(lastTerrainType),
 	CR_MEMBER(curTerrainType),
-
-	CR_MEMBER(alphaThreshold),
-
 	CR_MEMBER(selfDCountdown),
-	CR_RESERVED(16),
-
-	//CR_MEMBER(directControl),
-	//CR_MEMBER(myTrack),       //unused
+//#ifdef DIRECT_CONTROL_ALLOWED
+//	CR_MEMBER(directControl),
+//#endif
+	//CR_MEMBER(myTrack), // unused
 	CR_MEMBER(incomingMissiles),
 	CR_MEMBER(lastFlareDrop),
-	CR_MEMBER(seismicRadius),
-	CR_MEMBER(seismicSignature),
+	CR_MEMBER(currentFuel),
+	CR_MEMBER(luaDraw),
+	CR_MEMBER(noDraw),
+	CR_MEMBER(noSelect),
+	CR_MEMBER(noMinimap),
+//	CR_MEMBER(isIcon),
+//	CR_MEMBER(iconRadius),
 	CR_MEMBER(maxSpeed),
 	CR_MEMBER(weaponHitMod),
-
-	CR_MEMBER(inAir),
-	CR_MEMBER(inWater),
-//	CR_MEMBER(drawPos),
-//	CR_RESERVED(4),
-
-	CR_RESERVED(126),
+//	CR_MEMBER(lodCount),
+//	CR_MEMBER(currentLOD),
+//	CR_MEMBER(lodLengths),
+//	CR_MEMBER(luaMats),
+	CR_MEMBER(alphaThreshold),
+	CR_MEMBER(cegDamage),
+//	CR_MEMBER(lastDrawFrame),
+//	CR_MEMBER(lodFactor), // unsynced
+//	CR_MEMBER(expMultiplier),
+//	CR_MEMBER(expPowerScale),
+//	CR_MEMBER(expHealthScale),
+//	CR_MEMBER(expReloadScale),
+//	CR_MEMBER(expGrade),
 
 	CR_POSTLOAD(PostLoad)
 	));

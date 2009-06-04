@@ -22,16 +22,13 @@
 
 using namespace std;
 
-static const char* LUA_AI_POSTFIX = " (Mod specific AI)";
-
 const CGameSetup* gameSetup = NULL;
 
-CGameSetup::CGameSetup()
-{
-	startPosType=StartPos_Fixed;
-	numDemoPlayers=0;
-	hostDemo=false;
-}
+CGameSetup::CGameSetup():
+	startPosType(StartPos_Fixed),
+	hostDemo(false),
+	numDemoPlayers(0)
+{}
 
 CGameSetup::~CGameSetup()
 {
@@ -70,7 +67,7 @@ void CGameSetup::LoadStartPositionsFromMap()
 		float3 pos(1000.0f, 100.0f, 1000.0f);
 		if (!mapParser.GetStartPos(teamStartingData[a].teamStartNum, pos) && (startPosType == StartPos_Fixed || startPosType == StartPos_Random)) // don't fail when playing with more players than startpositions and we didn't use them anyway
 			throw content_error(mapParser.GetErrorLog());
-		teamStartingData[a].startPos = SFloat3(pos.x, pos.y, pos.z);
+		teamStartingData[a].startPos = float3(pos.x, pos.y, pos.z);
 	}
 }
 
@@ -138,6 +135,7 @@ void CGameSetup::LoadStartPositions(bool withoutMap)
 	}
 }
 
+
 /**
 @brief Load players and remove gaps in the player numbering.
 @pre numPlayers initialized
@@ -161,30 +159,15 @@ void CGameSetup::LoadPlayers(const TdfParser& file, std::set<std::string>& nameL
 		// expects lines of form team=x rather than team=TEAMx
 		// team field is relocated in RemapTeams
 		std::map<std::string, std::string> setup = file.GetAllValues(s);
-		std::map<std::string, std::string>::iterator it;
-		if ((it = setup.find("team")) != setup.end())
-			data.team = atoi(it->second.c_str());
-		if ((it = setup.find("rank")) != setup.end())
-			data.rank = atoi(it->second.c_str());
-		if ((it = setup.find("name")) != setup.end())
-		{
-			if (nameList.find(it->second) != nameList.end())
-				throw content_error(str(
-						boost::format("GameSetup: Player %i has name %s which is already taken")
-						%a %it->second.c_str() ));
-			data.name = it->second;
-			nameList.insert(data.name);
-		}
-		else
-		{
+		for (std::map<std::string, std::string>::const_iterator it = setup.begin(); it != setup.end(); ++it)
+			data.SetValue(it->first, it->second);
+
+		// do checks for sanity
+		if (data.name.empty())
 			throw content_error(str( boost::format("GameSetup: No name given for Player %i") %a ));
-		}
-		if ((it = setup.find("countryCode")) != setup.end())
-			data.countryCode = it->second;
-		if ((it = setup.find("spectator")) != setup.end())
-			data.spectator = static_cast<bool>(atoi(it->second.c_str()));
-		if ((it = setup.find("isfromdemo")) != setup.end())
-			data.isFromDemo = static_cast<bool>(atoi(it->second.c_str()));
+		if (nameList.find(data.name) != nameList.end())
+			throw content_error(str(boost::format("GameSetup: Player %i has name %s which is already taken")	%a %data.name.c_str() ));
+		nameList.insert(data.name);
 
 		if (data.isFromDemo)
 			numDemoPlayers++;
@@ -222,8 +205,8 @@ void CGameSetup::LoadSkirmishAIs(const TdfParser& file, std::set<std::string>& n
 		if (data.team == -1) {
 			throw content_error("missing AI.Team in GameSetup script");
 		}
-		data.host = atoi(file.SGetValueDef("-1", s + "Host").c_str());
-		if (data.host == -1) {
+		data.hostPlayerNum = atoi(file.SGetValueDef("-1", s + "Host").c_str());
+		if (data.hostPlayerNum == -1) {
 			throw content_error("missing AI.Host in GameSetup script");
 		}
 
@@ -232,20 +215,13 @@ void CGameSetup::LoadSkirmishAIs(const TdfParser& file, std::set<std::string>& n
 			throw content_error("missing AI.ShortName in GameSetup script");
 		}
 
-		// Is this team (Lua) AI controlled?
-		static const size_t LUA_AI_POSTFIX_size = strlen(LUA_AI_POSTFIX);
-		data.isLuaAI = false;
-		if (data.shortName.size() > LUA_AI_POSTFIX_size) {
-			const size_t realShortName_size = data.shortName.size() - LUA_AI_POSTFIX_size;
-			if (data.shortName.substr(realShortName_size).compare(LUA_AI_POSTFIX) == 0) {
-				data.shortName.erase(realShortName_size);
-				data.isLuaAI = true;
-			}
-		}
-
 		data.version = file.SGetValueDef("", s + "Version");
 		if (file.SectionExist(s + "Options")) {
 			data.options = file.GetAllValues(s + "Options");
+			std::map<std::string, std::string>::const_iterator kv;
+			for (kv = data.options.begin(); kv != data.options.end(); ++kv) {
+				data.optionKeys.push_back(kv->first);
+			}
 		}
 
 		// get the visible name (comparable to player-name)
@@ -297,31 +273,27 @@ void CGameSetup::LoadTeams(const TdfParser& file)
 	int i = 0;
 	for (int a = 0; a < MAX_TEAMS; ++a) {
 		char section[50];
-		sprintf(section, "GAME\\TEAM%i\\", a);
+		sprintf(section, "GAME\\TEAM%i", a);
 		string s(section);
 
-		if (!file.SectionExist(s.substr(0, s.length() - 1))) {
+		if (!file.SectionExist(s.substr(0, s.length()))) {
 			continue;
 		}
 
-		// Get default color from palette (based on "color" tag)
-		int colorNum = atoi(file.SGetValueDef("-1", s + "color").c_str());
-		if (colorNum == -1) colorNum = a;
-		colorNum %= palette.NumTeamColors();
-		float3 defaultCol(palette.teamColor[colorNum][0] / 255.0f, palette.teamColor[colorNum][1] / 255.0f, palette.teamColor[colorNum][2] / 255.0f);
+		TeamBase data;
+		data.startMetal = startMetal;
+		data.startEnergy = startEnergy;
 
-		// Read RGBColor, this overrides color if both had been set.
-		float3 color = file.GetFloat3(defaultCol, s + "rgbcolor");
-		TeamData data;
-		for (int b = 0; b < 3; ++b) {
-			data.color[b] = int(color[b] * 255);
+		// Get default color from palette (based on "color" tag)
+		for (size_t num = 0; num < 3; ++num)
+		{
+			data.color[num] = palette.teamColor[a][num];
 		}
 		data.color[3] = 255;
 
-		data.handicap = atof(file.SGetValueDef("0", s + "handicap").c_str()) / 100 + 1;
-		data.leader = atoi(file.SGetValueDef("0", s + "teamleader").c_str());
-		data.side = StringToLower(file.SGetValueDef("", s + "side").c_str());
-		data.teamAllyteam = atoi(file.SGetValueDef("0", s + "allyteam").c_str());
+		std::map<std::string, std::string> setup = file.GetAllValues(s);
+		for (std::map<std::string, std::string>::const_iterator it = setup.begin(); it != setup.end(); ++it)
+			data.SetValue(it->first, it->second);
 
 		teamStartingData.push_back(data);
 
@@ -346,16 +318,15 @@ void CGameSetup::LoadAllyTeams(const TdfParser& file)
 	int i = 0;
 	for (int a = 0; a < MAX_TEAMS; ++a) {
 		char section[50];
-		sprintf(section,"GAME\\ALLYTEAM%i\\",a);
+		sprintf(section,"GAME\\ALLYTEAM%i",a);
 		string s(section);
 
-		if (!file.SectionExist(s.substr(0, s.length() - 1)))
+		if (!file.SectionExist(s))
 			continue;
-		AllyTeamData data;
-		data.startRectTop    = atof(file.SGetValueDef("0", s + "StartRectTop").c_str());
-		data.startRectBottom = atof(file.SGetValueDef("1", s + "StartRectBottom").c_str());
-		data.startRectLeft   = atof(file.SGetValueDef("0", s + "StartRectLeft").c_str());
-		data.startRectRight  = atof(file.SGetValueDef("1", s + "StartRectRight").c_str());
+		AllyTeam data;
+		std::map<std::string, std::string> setup = file.GetAllValues(s);
+		for (std::map<std::string, std::string>::const_iterator it = setup.begin(); it != setup.end(); ++it)
+			data.SetValue(it->first, it->second);
 
 		allyStartingData.push_back(data);
 
@@ -399,11 +370,12 @@ void CGameSetup::RemapPlayers()
 		}
 		teamStartingData[a].leader = playerRemap[teamStartingData[a].leader];
 	}
-	// relocate AI.host field
+	// relocate AI.hostPlayerNum field
 	for (unsigned int a = 0; a < skirmishAIStartingData.size(); ++a) {
-		if (playerRemap.find(skirmishAIStartingData[a].host) == playerRemap.end())
-			throw content_error("invalid AI.host in GameSetup script");
-		skirmishAIStartingData[a].host = playerRemap[skirmishAIStartingData[a].host];
+		if (playerRemap.find(skirmishAIStartingData[a].hostPlayerNum) == playerRemap.end()) {
+			throw content_error("invalid AI.hostPlayerNum in GameSetup script");
+		}
+		skirmishAIStartingData[a].hostPlayerNum = playerRemap[skirmishAIStartingData[a].hostPlayerNum];
 	}
 }
 

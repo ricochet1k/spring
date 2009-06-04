@@ -81,8 +81,6 @@ CR_REG_METADATA(CGroundMoveType, (
 		CR_MEMBER(etaFailures),
 		CR_MEMBER(nonMovingFailures),
 
-		CR_MEMBER(moveType),
-
 		CR_MEMBER(floatOnWater),
 
 		CR_MEMBER(moveSquareX),
@@ -157,7 +155,6 @@ CGroundMoveType::CGroundMoveType(CUnit* owner) :
 	pathFailures(0),
 	etaFailures(0),
 	nonMovingFailures(0),
-	moveType(0),
 	floatOnWater(false),
 
 	nextDeltaSpeedUpdate(0),
@@ -197,7 +194,7 @@ CGroundMoveType::~CGroundMoveType()
 
 void CGroundMoveType::PostLoad()
 {
-	//HACK: re-initialize path after load
+	// FIXME: HACK: re-initialize path after load
 	if (pathId) {
 		pathId = pathManager->RequestPath(owner->mobility, owner->pos, goalPos, goalRadius, owner);
 	}

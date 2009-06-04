@@ -2,7 +2,7 @@
 #define COLLISION_VOLUME_H
 
 #include "float3.h"
-#include "creg/creg.h"
+#include "creg/creg_cond.h"
 #include "Util.h"
 
 const float EPS = 0.0000000001f;
@@ -18,22 +18,23 @@ enum COLVOL_TYPES {
 };
 
 enum COLVOL_AXES {
-	COLVOL_AXIS_X,
-	COLVOL_AXIS_Y,
-	COLVOL_AXIS_Z,
-	COLVOL_NUM_AXES     // number of collision volume axes
+	COLVOL_AXIS_X   = 0,
+	COLVOL_AXIS_Y   = 1,
+	COLVOL_AXIS_Z   = 2,
+	COLVOL_NUM_AXES = 3    // number of collision volume axes
 };
 enum COLVOL_TESTS {
-	COLVOL_TEST_DISC,
-	COLVOL_TEST_CONT,
-	COLVOL_NUM_TESTS    // number of tests
+	COLVOL_TEST_DISC = 0,
+	COLVOL_TEST_CONT = 1,
+	COLVOL_NUM_TESTS = 2   // number of tests
 };
 
 struct CollisionVolume
 {
 	CR_DECLARE_STRUCT(CollisionVolume);
 
-	CollisionVolume(const CollisionVolume* src = NULL, float defRadius = 0.0f);
+	CollisionVolume();
+	CollisionVolume(const CollisionVolume* v, float defRadius = 0.0f);
 	CollisionVolume(const std::string&, const float3&, const float3&, int);
 
 	static std::pair<int, int> GetVolumeTypeForString(const std::string&);
@@ -65,11 +66,16 @@ struct CollisionVolume
 	const float3& GetHScalesSq() const { return axisHScalesSq; }
 	const float3& GetHIScales() const { return axisHIScales; }
 
+	void RescaleAxes(float, float, float);
+
 	bool IsDisabled() const { return disabled; }
 	bool IsSphere() const { return volumeType == COLVOL_TYPE_SPHERE; }
 	bool UseFootprint() const { return volumeType == COLVOL_TYPE_FOOTPRINT; }
 
 private:
+	void SetAxisScales(float, float, float);
+	void SetBoundingRadius();
+
 	float3 axisScales;					// full-length axis scales
 	float3 axisHScales;					// half-length axis scales
 	float3 axisHScalesSq;				// half-length axis scales (squared)

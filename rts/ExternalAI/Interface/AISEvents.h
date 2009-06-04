@@ -143,6 +143,7 @@ struct SMessageEvent {
  */
 struct SUnitCreatedEvent {
 	int unit;
+	int builder;
 }; // EVENT_UNIT_CREATED
 
 /**
@@ -181,6 +182,7 @@ struct SUnitMoveFailedEvent {
  * directly from the attacker to the attacked unit, while with artillery it will
  * rather be from somewhere up in the sky to the attacked unit.
  * See also the unit-destroyed event.
+ * attacker may be 0, which means no attacker was directly involveld.
  */
 struct SUnitDamagedEvent {
 	int unit;
@@ -192,6 +194,7 @@ struct SUnitDamagedEvent {
 /**
  * This AI event is sent when a unit was destroyed; see also the unit-damaged
  * event.
+ * attacker may be 0, which means no attacker was directly involveld.
  */
 struct SUnitDestroyedEvent {
 	int unit;
@@ -256,6 +259,7 @@ struct SEnemyLeaveRadarEvent {
  * direction will point directly from the attacker to the attacked unit, while
  * with artillery it will rather be from somewhere up in the sky to the attacked
  * unit.
+ * attacker may be 0, which means no attacker was directly involveld.
  * See also the enemy-destroyed event.
  */
 struct SEnemyDamagedEvent {
@@ -268,6 +272,7 @@ struct SEnemyDamagedEvent {
 /**
  * This AI event is sent when an enemy unit was destroyed; see also the
  * enemy-damaged event.
+ * attacker may be 0, which means no attacker was directly involveld.
  */
 struct SEnemyDestroyedEvent {
 	int enemy;
@@ -283,18 +288,26 @@ struct SWeaponFiredEvent {
 }; // EVENT_WEAPON_FIRED
 
 /**
- * This AI event is sent when a weapon is fired.
+ * This AI event is sent when a user gives a command to one or multiple units
+ * belonging to a team controlled by the AI.
  */
 struct SPlayerCommandEvent {
 	int* unitIds;
 	int numUnitIds;
-	int commandTopic; // see AISCommands.h COMMAND_* defines
-	void* commandData; // see AISCommands.h S*Command structs
+	/// see AISCommands.h COMMAND_* defines
+	int commandTopic;
+	/// see AISCommands.h S*Command structs
+	void* commandData;
 	int playerId;
 }; // EVENT_PLAYER_COMMAND
 
 /**
- * This AI event is sent when a unit finnished processing a command.
+ * This AI event is sent when a unit finished processing a command.
+ * @param commandId      used on asynchronous commands only (is -1 for regular commands).
+ *                       this allows the AI to identify a possible result event,
+ *                       which would come with the same id
+ * @param commandTopicId unique identifier of a command
+ *                       (see COMMAND_* defines in AISCommands.h)
  * @see callback.handleCommand(..., int commandId, ...)
  */
 struct SCommandFinishedEvent {

@@ -667,7 +667,7 @@ void CMiniMap::SelectUnits(int x, int y) const
 		selectedUnits.ClearSelected();
 	}
 
-	CMouseHandler::ButtonPress& bp = mouse->buttons[SDL_BUTTON_LEFT];
+	CMouseHandler::ButtonPressEvt& bp = mouse->buttons[SDL_BUTTON_LEFT];
 
 	if (fullProxy && (bp.movement > 4)) {
 		// use a selection box
@@ -824,7 +824,7 @@ void CMiniMap::ProxyMousePress(int x, int y, int button)
 		}
 	}
 
-	CMouseHandler::ButtonPress& bp = mouse->buttons[button];
+	CMouseHandler::ButtonPressEvt& bp = mouse->buttons[button];
 	bp.camPos = mapPos;
 	bp.dir = float3(0.0f, -1.0f, 0.0f);
 
@@ -914,8 +914,8 @@ std::string CMiniMap::GetTooltip(int x, int y)
 		return buildTip;
 	}
 
-	GML_RECMUTEX_LOCK(sel); // anti deadlock
-	GML_RECMUTEX_LOCK(quad); //unit); // tooltipconsole::draw --> mousehandler::getcurrenttooltip --> gettooltip
+	GML_RECMUTEX_LOCK(sel); // GetToolTip - anti deadlock
+	GML_RECMUTEX_LOCK(quad); // GetToolTip - called from TooltipConsole::Draw --> MouseHandler::GetCurrentTooltip
 
 	const CUnit* unit = GetSelectUnit(GetMapPosition(x, y));
 	if (unit) {
@@ -1049,7 +1049,6 @@ void CMiniMap::DrawForReal()
 	for (ui = uh->renderUnits.begin(); ui != uh->renderUnits.end(); ui++) {
 		DrawUnit(*ui);
 	}
-//	GML_RECMUTEX_LOCK(quad);  // getselectunit accesses quadfield
 	// highlight the selected unit
 	CUnit* unit = GetSelectUnit(GetMapPosition(mouse->lastx, mouse->lasty));
 	if (unit != NULL) {
@@ -1103,17 +1102,18 @@ void CMiniMap::DrawForReal()
 
 	// draw the projectiles
 	if (drawProjectiles) {
+
 		GML_RECMUTEX_LOCK(proj); // DrawForReal
-		if(ph->ps.size()>0) {
+
+		if(ph->renderprojectiles.size()>0) {
 			CVertexArray* lines=GetVertexArray();
 			CVertexArray* points=GetVertexArray();
 			lines->Initialize();
-			lines->EnlargeArrays(ph->ps.size()*2,0,VA_SIZE_C);
+			lines->EnlargeArrays(ph->renderprojectiles.size()*2,0,VA_SIZE_C);
 			points->Initialize();
-			points->EnlargeArrays(ph->ps.size(),0,VA_SIZE_C);
+			points->EnlargeArrays(ph->renderprojectiles.size(),0,VA_SIZE_C);
 
-			Projectile_List::iterator psi;
-			for(psi = ph->ps.begin(); psi != ph->ps.end(); ++psi) {
+			for(std::set<CProjectile *>::iterator psi = ph->renderprojectiles.begin(); psi != ph->renderprojectiles.end(); ++psi) {
 				CProjectile* p = *psi;
 
 				if ((p->owner() && (p->owner()->allyteam == gu->myAllyTeam)) ||
@@ -1177,7 +1177,7 @@ void CMiniMap::DrawForReal()
 
 	// selection box
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	CMouseHandler::ButtonPress& bp = mouse->buttons[SDL_BUTTON_LEFT];
+	CMouseHandler::ButtonPressEvt& bp = mouse->buttons[SDL_BUTTON_LEFT];
 	if (selecting && fullProxy && (bp.movement > 4)) {
 		const float3 oldPos = GetMapPosition(bp.x, bp.y);
 		const float3 newPos = GetMapPosition(mouse->lastx, mouse->lasty);
@@ -1428,11 +1428,6 @@ void CMiniMap::DrawUnit(CUnit* unit)
 
 	// the next simplest test
 	if (unit->noMinimap) {
-		return;
-	}
-
-	// blink for damages within the past 3 game seconds
-	if ((unit->lastDamage > (gs->frameNum - 3 * GAME_SPEED)) && (gs->frameNum & 8)) {
 		return;
 	}
 

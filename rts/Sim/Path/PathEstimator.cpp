@@ -21,6 +21,8 @@
 #include "FileSystem/ArchiveZip.h"
 #include "FileSystem/FileSystem.h"
 
+#include "NetProtocol.h"
+
 #define PATHDEBUG false
 
 
@@ -40,7 +42,7 @@ const unsigned int PATHOPT_BLOCKED = 64;
 const unsigned int PATHOPT_SEARCHRELATED = (PATHOPT_OPEN | PATHOPT_CLOSED | PATHOPT_FORBIDDEN | PATHOPT_BLOCKED);
 const unsigned int PATHOPT_OBSOLETE = 128;
 
-const unsigned int PATHESTIMATOR_VERSION = 40;
+const unsigned int PATHESTIMATOR_VERSION = 41;
 const float PATHCOST_INFINITY = 10000000;
 const int SQUARES_TO_UPDATE = 600;
 
@@ -55,11 +57,11 @@ CPathEstimator::CPathEstimator(CPathFinder* pf, unsigned int BSIZE, unsigned int
 	BLOCK_PIXEL_SIZE(BSIZE * SQUARE_SIZE),
 	BLOCKS_TO_UPDATE(SQUARES_TO_UPDATE / (BLOCK_SIZE * BLOCK_SIZE) + 1),
 	pathFinder(pf),
-	moveMathOptions(mmOpt),
-	pathChecksum(0),
 	nbrOfBlocksX(gs->mapx / BLOCK_SIZE),
 	nbrOfBlocksZ(gs->mapy / BLOCK_SIZE),
 	nbrOfBlocks(nbrOfBlocksX * nbrOfBlocksZ),
+	moveMathOptions(mmOpt),
+	pathChecksum(0),
 	offsetBlockNum(nbrOfBlocks),costBlockNum(nbrOfBlocks),
 	lastOffsetMessage(-1),lastCostMessage(-1)
 {
@@ -206,14 +208,15 @@ void CPathEstimator::CalcOffsetsAndPathCosts(int thread) {
 	// A must be completely finished before B_i can be safely called. This means we cannot
 	// let thread i execute (A_i, B_i), but instead have to split the work such that every
 	// thread finishes its part of A before any starts B_i.
+	int nbr = nbrOfBlocks - 1;
 	int i;
-	while((i=--offsetBlockNum) >= 0)
-		CalculateBlockOffsets(i,thread);
+	while((i = --offsetBlockNum) >= 0)
+		CalculateBlockOffsets(nbr - i, thread);
 
 	pathBarrier->wait();
 
-	while((i=--costBlockNum) >= 0)
-		EstimatePathCosts(i,thread);
+	while((i = --costBlockNum) >= 0)
+		EstimatePathCosts(nbr - i, thread);
 }
 
 
@@ -224,7 +227,8 @@ void CPathEstimator::CalculateBlockOffsets(int idx, int thread) {
 	if (thread == 0 && (idx/1000)!=lastOffsetMessage) {
 		lastOffsetMessage=idx/1000;
 		char calcMsg[128];
-		sprintf(calcMsg, "Block offset remaining: %d of %d (block-size %d)", lastOffsetMessage*1000, nbrOfBlocks, BLOCK_SIZE);
+		sprintf(calcMsg, "Block offset: %d of %d (size %d)", lastOffsetMessage*1000, nbrOfBlocks, BLOCK_SIZE);
+		net->Send(CBaseNetProtocol::Get().SendCPUUsage(BLOCK_SIZE | (lastOffsetMessage<<8)));
 		PrintLoadMsg(calcMsg);
 	}
 
@@ -239,7 +243,8 @@ void CPathEstimator::EstimatePathCosts(int idx, int thread) {
 	if (thread == 0 && (idx/1000)!=lastCostMessage) {
 		lastCostMessage=idx/1000;
 		char calcMsg[128];
-		sprintf(calcMsg, "Path cost remaining: %d of %d (block-size %d)", lastCostMessage*1000, nbrOfBlocks, BLOCK_SIZE);
+		sprintf(calcMsg, "Path cost: %d of %d (size %d)", lastCostMessage*1000, nbrOfBlocks, BLOCK_SIZE);
+		net->Send(CBaseNetProtocol::Get().SendCPUUsage(0x1 | BLOCK_SIZE | (lastCostMessage<<8)));
 		PrintLoadMsg(calcMsg);
 	}
 
@@ -909,11 +914,7 @@ void CPathEstimator::Draw(void)
 
 					p2 = (p1 + p2) / 2;
 					if (camera->pos.SqDistance(p2) < 250000) {
-						glPushMatrix();
-						glTranslatef3(p2);
-						glScalef(5, 5, 5);
-						font->glWorldPrint("%.0f", cost);
-						glPopMatrix();
+						font->glWorldPrint(p2,5,"%.0f", cost);
 					}
 				}
 			}
@@ -969,11 +970,7 @@ void CPathEstimator::Draw(void)
 		p1.y=ground->GetHeight(p1.x,p1.z)+15;
 
 		if(camera->pos.SqDistance(p1)<250000){
-			glPushMatrix();
-			glTranslatef3(p1);
-			glScalef(5,5,5);
-			font->glWorldPrint("%.0f %.0f",ob->cost,ob->currentCost);
-			glPopMatrix();
+			font->glWorldPrint(p1,5,"%.0f %.0f",ob->cost,ob->currentCost);
 		}
 		++a;
 	}

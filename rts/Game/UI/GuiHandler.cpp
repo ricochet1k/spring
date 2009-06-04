@@ -66,8 +66,8 @@ extern boost::uint8_t *keys;
 CGuiHandler* guihandler = NULL;
 
 
-CGuiHandler::CGuiHandler()
-	: inCommand(-1),
+CGuiHandler::CGuiHandler():
+	inCommand(-1),
 	buildFacing(0),
 	buildSpacing(0),
 	needShift(false),
@@ -77,6 +77,7 @@ CGuiHandler::CGuiHandler()
 	maxPage(0),
 	activePage(0),
 	defaultCmdMemory(-1),
+	explicitCommand(-1),
 	actionOffset(0),
 	drawSelectionInfo(true),
 	gatherMode(false)
@@ -151,7 +152,7 @@ void CGuiHandler::LoadDefaults()
 
 	outlineFonts = false;
 
-	attackRect = true;
+	attackRect = false;
 	newAttackMode = true;
 	invColorSelect = true;
 	frontByEnds = false;
@@ -450,8 +451,6 @@ void CGuiHandler::AppendPrevAndNext(std::vector<CommandDescription>& cmds)
 
 int CGuiHandler::FindInCommandPage()
 {
-//	GML_RECMUTEX_LOCK(gui); // CGame::Draw --> RunLayoutCommand --> LayoutIcons --> FindInCommandPage. Not needed, Draw thread.
-
 	if ((inCommand < 0) || ((size_t)inCommand >= commands.size())) {
 		return -1;
 	}
@@ -468,8 +467,6 @@ int CGuiHandler::FindInCommandPage()
 void CGuiHandler::RevertToCmdDesc(const CommandDescription& cmdDesc,
                                   bool defaultCommand, bool samePage)
 {
-//	GML_RECMUTEX_LOCK(gui); // updates inCommand, CGame::Draw --> RunLayoutCommand --> LayoutIcons --> RevertToCmdDesc. Not needed, protected via other func.
-
 	for (size_t a = 0; a < commands.size(); ++a) {
 		if (commands[a].id == cmdDesc.id) {
 			if (defaultCommand) {
@@ -499,7 +496,7 @@ void CGuiHandler::RevertToCmdDesc(const CommandDescription& cmdDesc,
 
 void CGuiHandler::LayoutIcons(bool useSelectionPage)
 {
-	GML_RECMUTEX_LOCK(gui); // updates inCommand, CGame::Draw --> RunLayoutCommand --> LayoutIcons
+	GML_RECMUTEX_LOCK(gui); // LayoutIcons - updates inCommand. Called from CGame::Draw --> RunLayoutCommand 
 
 	const bool defCmd =
 		(mouse->buttons[SDL_BUTTON_RIGHT].pressed &&
@@ -965,7 +962,6 @@ void CGuiHandler::Update()
 
 void CGuiHandler::SetCursorIcon() const
 {
-//	GML_RECMUTEX_LOCK(gui); // SetCursorIcon. Not needed, protected via Update
 	string newCursor = "cursornormal";
 	mouse->cursorScale = 1.0f;
 
@@ -1081,8 +1077,11 @@ bool CGuiHandler::MousePress(int x, int y, int button)
 
 void CGuiHandler::MouseRelease(int x, int y, int button, float3& camerapos, float3& mousedir)
 {
-//	GML_RECMUTEX_LOCK(gui); // not needed, draw thread + read only
 	int iconCmd = -1;
+
+	if (button != SDL_BUTTON_MIDDLE) {
+		explicitCommand = inCommand;
+	}
 
 	if (activeMousePress) {
 		activeMousePress = false;
@@ -1223,7 +1222,7 @@ bool CGuiHandler::SetActiveCommand(int cmdIndex, bool rmb)
 					"assigned.";
 				std::vector<std::string>::const_iterator pi;
 				for (pi = ++cd.params.begin(); pi != cd.params.end(); ++pi) {
-					list->AddItem(pi->c_str(),"");
+					list->AddItem(*pi,"");
 				}
 				list->place=atoi(cd.params[0].c_str());
 			} else {
@@ -1399,7 +1398,7 @@ static bool CheckCustomCmdMods(bool rmb, ModGroup& inMods)
 
 void CGuiHandler::RunCustomCommands(const std::vector<std::string>& cmds, bool rmb)
 {
-	GML_RECMUTEX_LOCK(gui); // LuaUnsyncedCtrl::SendCommands --> RunCustomCommands
+	GML_RECMUTEX_LOCK(gui); // RunCustomCommands - called from LuaUnsyncedCtrl::SendCommands 
 
 	static int depth = 0;
 	if (depth > 8) {
@@ -1445,7 +1444,7 @@ void CGuiHandler::RunCustomCommands(const std::vector<std::string>& cmds, bool r
 
 bool CGuiHandler::AboveGui(int x, int y)
 {
-	GML_RECMUTEX_LOCK(gui); // CMouseHandler::GetCurrentTooltip --> IsAbove --> AboveGui
+	GML_RECMUTEX_LOCK(gui); // AboveGui - called from CMouseHandler::GetCurrentTooltip --> IsAbove
 
 	if (iconsCount <= 0) {
 		return false;
@@ -1518,12 +1517,11 @@ int CGuiHandler::GetDefaultCommand(int x, int y, float3& camerapos, float3& mous
 		return -1;
 	}
 
-	GML_RECMUTEX_LOCK(sel); // anti deadlock
+	GML_RECMUTEX_LOCK(sel); // GetDefaultCommand - anti deadlock
 	GML_RECMUTEX_LOCK(quad); // GetDefaultCommand
+
 	CUnit* unit = NULL;
-//	GML_RECMUTEX_LOCK(unit); // GetDefaultCommand
 	CFeature* feature = NULL;
-//	GML_RECMUTEX_LOCK(feat); // GetDefaultCommand
 	if ((ir == minimap) && (minimap->FullProxy())) {
 		unit = minimap->GetSelectUnit(minimap->GetMapPosition(x, y));
 	}
@@ -1566,7 +1564,6 @@ int CGuiHandler::GetDefaultCommand(int x, int y, float3& camerapos, float3& mous
 
 bool CGuiHandler::ProcessLocalActions(const Action& action)
 {
-//	GML_RECMUTEX_LOCK(gui); // not needed, protected via other functions
 	// do not process these actions if the control panel is not visible
 	if (iconsCount <= 0) {
 		return false;
@@ -1990,7 +1987,7 @@ bool CGuiHandler::SetActiveCommand(const Action& action,
 						"Select \"None\" to cancel or \"default\" to create a group without an AI\n"
 						"assigned.";
 				for (pi = ++cd.params.begin(); pi != cd.params.end(); ++pi) {
-					list->AddItem(pi->c_str(), "");
+					list->AddItem(*pi, "");
 				}
 				list->place = atoi(cd.params[0].c_str());
 				lastKeySet.Reset();
@@ -2098,7 +2095,7 @@ bool CGuiHandler::IsAbove(int x, int y)
 
 std::string CGuiHandler::GetTooltip(int x, int y)
 {
-	GML_RECMUTEX_LOCK(gui); // LuaUnsyncedRead::GetCurrentTooltip --> CMouseHandler::GetCurrentTooltip --> GetTooltip
+	GML_RECMUTEX_LOCK(gui); // GetTooltip - called from LuaUnsyncedRead::GetCurrentTooltip --> CMouseHandler::GetCurrentTooltip
 
 	std::string s;
 
@@ -2131,7 +2128,7 @@ std::string CGuiHandler::GetTooltip(int x, int y)
 // mousehandler::getcurrenttooltip --> CMiniMap::gettooltip --> GetBuildTooltip
 std::string CGuiHandler::GetBuildTooltip() const
 {
-	GML_RECMUTEX_LOCK(gui); // luaunsyncedread::getcurrenttooltip --> mousehandler::getcurrenttooltip --> GetBuildTooltip
+	GML_RECMUTEX_LOCK(gui); // GetBuildTooltip - called from LuaUnsyncedRead::GetCurrentTooltip --> MouseHandler::GetCurrentTooltip 
 
 	if ((inCommand >= 0) && ((size_t)inCommand < commands.size()) &&
 	    (commands[inCommand].type == CMDTYPE_ICON_BUILDING)) {
@@ -2150,6 +2147,7 @@ Command CGuiHandler::GetOrderPreview(void) // Called from GroupAICallback
 Command CGuiHandler::GetCommand(int mousex, int mousey, int buttonHint, bool preview, float3& camerapos, float3& mousedir)
 {
 	GML_RECMUTEX_LOCK(gui); // GetCommand - updates inCommand
+
 	Command defaultRet;
 	defaultRet.id=CMD_STOP;
 
@@ -2350,6 +2348,8 @@ Command CGuiHandler::GetCommand(int mousex, int mousey, int buttonHint, bool pre
 				} else if (unit!=0 && commands[tempInCommand].type!=CMDTYPE_ICON_AREA) {  // clicked on unit
 					c.params.push_back(unit->id);
 				} else { // clicked in map
+					if(explicitCommand<0) // only attack ground if explicitly set the command
+						return defaultRet;
 					float3 pos=camerapos+mousedir*dist2;
 					c.params.push_back(pos.x);
 					c.params.push_back(pos.y);
@@ -2392,6 +2392,8 @@ Command CGuiHandler::GetCommand(int mousex, int mousey, int buttonHint, bool pre
 				  // clicked on unit
 					c.params.push_back(unit->id);
 				} else { // clicked in map
+					if(explicitCommand<0) // only attack ground if explicitly set the command
+						return defaultRet;
 					float3 pos = camerapos + (mousedir * dist2);
 					c.params.push_back(pos.x);
 					c.params.push_back(pos.y);
@@ -2432,8 +2434,9 @@ Command CGuiHandler::GetCommand(int mousex, int mousey, int buttonHint, bool pre
 
 
 
-static bool WouldCancelAnyQueued(const BuildInfo& b) {
-	GML_RECMUTEX_LOCK(sel); //drawmapstuff -> getbuildpos --> fillrowofbuildpos -> wouldcancelanyqueued
+static bool WouldCancelAnyQueued(const BuildInfo& b)
+{
+	GML_RECMUTEX_LOCK(sel); // WouldCancelAnyQueued - called from DrawMapStuff -> GetBuildPos --> FillRowOfBuildPos
 
 	Command c;
 	b.FillCmd(c);
@@ -2471,7 +2474,7 @@ std::vector<BuildInfo> CGuiHandler::GetBuildPos(const BuildInfo& startInfo, cons
 	{
 		CUnit* unit=0;
 
-		GML_RECMUTEX_LOCK(quad); //unit); // GetBuildCommand accesses activeunits. drawmapstuff -> getbuildpos
+		GML_RECMUTEX_LOCK(quad); // GetBuildCommand - accesses activeunits - called from DrawMapStuff -> GetBuildPos
 
 		helper->GuiTraceRay(camerapos,mousedir,gu->viewRange*1.4f,unit,true);
 		if(unit){
@@ -2572,9 +2575,6 @@ void CGuiHandler::ProcessFrontPositions(float3& pos0, float3& pos1)
 
 void CGuiHandler::Draw()
 {
-//	GML_RECMUTEX_LOCK(gui); // accesses iconsCount. Draw
-//	GML_RECMUTEX_LOCK(quad); // update accesses setcursoricon->getdefaultcommand->guitraceray which accesses the quadfield
-
 	Update();
 
 	if ((iconsCount <= 0) && (luaUI == NULL)) {
@@ -2597,21 +2597,6 @@ void CGuiHandler::Draw()
 	}
 
 	glPopAttrib();
-}
-
-
-static std::string StripColorCodes(const std::string& text)
-{
-	std::string nocolor;
-	const int len = (int)text.size();
-	for (int i = 0; i < len; i++) {
-		if ((unsigned char)text[i] == 255) {
-			i = i + 3;
-		} else {
-			nocolor += text[i];
-		}
-	}
-	return nocolor;
 }
 
 
@@ -2667,10 +2652,10 @@ bool CGuiHandler::DrawUnitBuildIcon(const IconInfo& icon, int unitDefID)
 		glColor4f(1.0f, 1.0f, 1.0f, textureAlpha);
 		glBindTexture(GL_TEXTURE_2D, unitDefHandler->GetUnitDefImage(ud));
 		glBegin(GL_QUADS);
-		glTexCoord2f(0.0f, 0.0f); glVertex2f(b.x1, b.y1);
-		glTexCoord2f(1.0f, 0.0f); glVertex2f(b.x2, b.y1);
-		glTexCoord2f(1.0f, 1.0f); glVertex2f(b.x2, b.y2);
-		glTexCoord2f(0.0f, 1.0f); glVertex2f(b.x1, b.y2);
+			glTexCoord2f(0.0f, 0.0f); glVertex2f(b.x1, b.y1);
+			glTexCoord2f(1.0f, 0.0f); glVertex2f(b.x2, b.y1);
+			glTexCoord2f(1.0f, 1.0f); glVertex2f(b.x2, b.y2);
+			glTexCoord2f(0.0f, 1.0f); glVertex2f(b.x1, b.y2);
 		glEnd();
 		return true;
 	}
@@ -2895,25 +2880,18 @@ void CGuiHandler::DrawName(const IconInfo& icon, const std::string& text,
 
 	const float yShrink = offsetForLEDs ? (0.125f * yIconSize) : 0.0f;
 
-	const float tWidth  = font->CalcTextWidth(text.c_str());
-	const float tHeight = font->CalcTextHeight(text.c_str());
+	const float tWidth  = font->GetSize() * font->GetTextWidth(text) * gu->pixelX;  //FIXME
+	const float tHeight = font->GetSize() * font->GetTextHeight(text) * gu->pixelY; //FIXME merge in 1 function?
 	const float textBorder2 = (2.0f * textBorder);
 	float xScale = (xIconSize - textBorder2) / tWidth;
 	float yScale = (yIconSize - textBorder2 - yShrink) / tHeight;
 	const float fontScale = std::min(xScale, yScale);
 
 	const float xCenter = 0.5f * (b.x1 + b.x2);
-	const float yCenter = 0.5f * (b.y1 + (b.y2 + yShrink));
-	const float xStart = xCenter - 0.5f * fontScale * tWidth;
-	const float yStart  = yCenter - (0.5f * fontScale * (1.25f * tHeight));
-	const float dShadow = 0.002f;
+	const float yCenter = 0.5f * (b.y1 + b.y2 + yShrink);
 
-	if (dropShadows) {
-		glColor4f(0.0f, 0.0f, 0.0f, 0.8f);
-		font->glPrintAt(xStart + dShadow, yStart - dShadow, fontScale, StripColorCodes(text).c_str());
-	}
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	font->glPrintAt(xStart, yStart, fontScale, text.c_str());
+	font->glPrint(xCenter, yCenter, fontScale, (dropShadows ? FONT_SHADOW : 0) | FONT_CENTER | FONT_VCENTER | FONT_SCALE | FONT_NORM, text);
 }
 
 
@@ -2923,12 +2901,12 @@ void CGuiHandler::DrawNWtext(const IconInfo& icon, const std::string& text)
 		return;
 	}
 	const Box& b = icon.visual;
-	const float tHeight = font->CalcTextHeight(text.c_str());
+	const float tHeight = font->GetSize() * font->GetTextHeight(text) * gu->pixelY;
 	const float fontScale = (yIconSize * 0.2f) / tHeight;
 	const float xPos = b.x1 + textBorder + 0.002f;
-	const float yPos = b.y1 - textBorder - (fontScale * tHeight) - 0.006f;
+	const float yPos = b.y1 - textBorder - 0.006f;
 
-	font->glPrintColorAt(xPos, yPos, fontScale, text.c_str());
+	font->glPrint(xPos, yPos, fontScale, FONT_TOP | FONT_SCALE | FONT_NORM, text);
 }
 
 
@@ -2938,12 +2916,12 @@ void CGuiHandler::DrawSWtext(const IconInfo& icon, const std::string& text)
 		return;
 	}
 	const Box& b = icon.visual;
-	const float tHeight = font->CalcTextHeight(text.c_str());
+	const float tHeight = font->GetSize() * font->GetTextHeight(text) * gu->pixelY;
 	const float fontScale = (yIconSize * 0.2f) / tHeight;
 	const float xPos = b.x1 + textBorder + 0.002f;
 	const float yPos = b.y2 + textBorder + 0.002f;
 
-	font->glPrintColorAt(xPos, yPos, fontScale, text.c_str());
+	font->glPrint(xPos, yPos, fontScale, FONT_SCALE | FONT_NORM, text);
 }
 
 
@@ -2953,13 +2931,12 @@ void CGuiHandler::DrawNEtext(const IconInfo& icon, const std::string& text)
 		return;
 	}
 	const Box& b = icon.visual;
-	const float tWidth = font->CalcTextWidth(text.c_str());
-	const float tHeight = font->CalcTextHeight(text.c_str());
+	const float tHeight = font->GetSize() * font->GetTextHeight(text) * gu->pixelY;
 	const float fontScale = (yIconSize * 0.2f) / tHeight;
-	const float xPos = b.x2 - textBorder - (fontScale * tWidth) - 0.002f;
-	const float yPos = b.y1 - textBorder - (fontScale * tHeight) - 0.006f;
+	const float xPos = b.x2 - textBorder - 0.002f;
+	const float yPos = b.y1 - textBorder - 0.006f;
 
-	font->glPrintColorAt(xPos, yPos, fontScale, text.c_str());
+	font->glPrint(xPos, yPos, fontScale, FONT_TOP | FONT_RIGHT | FONT_SCALE | FONT_NORM, text);
 }
 
 
@@ -2969,13 +2946,12 @@ void CGuiHandler::DrawSEtext(const IconInfo& icon, const std::string& text)
 		return;
 	}
 	const Box& b = icon.visual;
-	const float tWidth = font->CalcTextWidth(text.c_str());
-	const float tHeight = font->CalcTextHeight(text.c_str());
+	const float tHeight = font->GetSize() * font->GetTextHeight(text) * gu->pixelY;
 	const float fontScale = (yIconSize * 0.2f) / tHeight;
-	const float xPos = b.x2 - textBorder - (fontScale * tWidth) - 0.002f;
+	const float xPos = b.x2 - textBorder - 0.002f;
 	const float yPos = b.y2 + textBorder + 0.002f;
 
-	font->glPrintColorAt(xPos, yPos, fontScale, text.c_str());
+	font->glPrint(xPos, yPos, fontScale, FONT_RIGHT | FONT_SCALE | FONT_NORM, text);
 }
 
 
@@ -2992,10 +2968,10 @@ void CGuiHandler::DrawHilightQuad(const IconInfo& icon)
 	glDisable(GL_TEXTURE_2D);
 	glBlendFunc(GL_ONE, GL_ONE); // additive blending
 	glBegin(GL_QUADS);
-	glVertex2f(b.x1, b.y1);
-	glVertex2f(b.x2, b.y1);
-	glVertex2f(b.x2, b.y2);
-	glVertex2f(b.x1, b.y2);
+		glVertex2f(b.x1, b.y1);
+		glVertex2f(b.x2, b.y1);
+		glVertex2f(b.x2, b.y2);
+		glVertex2f(b.x1, b.y2);
 	glEnd();
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
@@ -3004,7 +2980,7 @@ void CGuiHandler::DrawHilightQuad(const IconInfo& icon)
 void CGuiHandler::DrawButtons() // Only called by Draw
 {
 	glLineWidth(1.0f);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	font->Begin();
 
 	// frame box
 	const float alpha = (frameAlpha < 0.0f) ? guiAlpha : frameAlpha;
@@ -3012,10 +2988,10 @@ void CGuiHandler::DrawButtons() // Only called by Draw
 		glColor4f(0.2f, 0.2f, 0.2f, alpha);
 		glBegin(GL_QUADS);
 		const GLfloat fx = 0.0f; //-.2f*(1-fadein/100.0f)+.2f;
-		glVertex2f(buttonBox.x1 - fx, buttonBox.y1);
-		glVertex2f(buttonBox.x1 - fx, buttonBox.y2);
-		glVertex2f(buttonBox.x2 - fx, buttonBox.y2);
-		glVertex2f(buttonBox.x2 - fx, buttonBox.y1);
+			glVertex2f(buttonBox.x1 - fx, buttonBox.y1);
+			glVertex2f(buttonBox.x1 - fx, buttonBox.y2);
+			glVertex2f(buttonBox.x2 - fx, buttonBox.y2);
+			glVertex2f(buttonBox.x2 - fx, buttonBox.y1);
 		glEnd();
 	}
 
@@ -3042,6 +3018,7 @@ void CGuiHandler::DrawButtons() // Only called by Draw
 		else {
 			bool usedTexture = false;
 			bool onlyTexture = cmdDesc.onlyTexture;
+			const bool useLEDs = useOptionLEDs && (cmdDesc.type == CMDTYPE_ICON_MODE);
 
 			// specified texture
 			if (DrawTexture(icon, cmdDesc.iconname)) {
@@ -3094,12 +3071,8 @@ void CGuiHandler::DrawButtons() // Only called by Draw
 					glColor4f(1.0f, 1.0f, 1.0f, 0.1f);
 					DrawIconFrame(icon);
 				}
-			}
 
-			const bool useLEDs = useOptionLEDs && (cmdDesc.type == CMDTYPE_ICON_MODE);
-
-			// draw the text
-			if (!usedTexture || !onlyTexture) {
+				// draw the text
 				// command name (or parameter)
 				std::string toPrint = cmdDesc.name;
 				if (cmdDesc.type == CMDTYPE_ICON_MODE
@@ -3146,20 +3119,18 @@ void CGuiHandler::DrawButtons() // Only called by Draw
 
 	// active page indicator
 	if (luaUI == NULL) {
-		char buf[64];
-		SNPRINTF(buf, 64, "%i", activePage + 1);
 		if (selectedUnits.BuildIconsFirst()) {
 			glColor4fv(cmdColors.build);
 		} else {
 			glColor4f(0.7f, 0.7f, 0.7f, 1.0f);
 		}
 		const float textSize = 1.2f;
-		const float yBbot =
-			yBpos - (textSize * 0.5f * font->CalcTextHeight(buf));
-		font->glPrintCentered(xBpos, yBbot, textSize, buf);
+		font->glFormat(xBpos, yBpos, textSize, FONT_CENTER | FONT_VCENTER | FONT_SCALE | FONT_NORM, "%i", activePage + 1);
 	}
 
 	DrawMenuName();
+
+	font->End();
 
 	// LuaUI can handle this
 	if (luaUI == NULL || drawSelectionInfo)
@@ -3172,28 +3143,23 @@ void CGuiHandler::DrawButtons() // Only called by Draw
 void CGuiHandler::DrawMenuName() // Only called by drawbuttons
 {
 	if (!menuName.empty() && (iconsCount > 0)) {
-		const char* text = menuName.c_str();
-
 		const float fontScale = 1.0f;
-		const float textWidth  = fontScale * font->CalcTextWidth(text);
-		const float textHeight = fontScale * font->CalcTextHeight(text);
-		const float xp = 0.5f * (buttonBox.x1 + buttonBox.x2 - textWidth);
+		const float xp = 0.5f * (buttonBox.x1 + buttonBox.x2);
 		const float yp = buttonBox.y2 + (yIconSize * 0.125f);
 
 		if (!outlineFonts) {
+			const float textHeight = fontScale * font->GetTextHeight(menuName) * gu->pixelY;
 			glDisable(GL_TEXTURE_2D);
 			glColor4f(0.2f, 0.2f, 0.2f, guiAlpha);
 			glRectf(buttonBox.x1,
-							buttonBox.y2,
-							buttonBox.x2,
-							buttonBox.y2 + (textHeight * 1.25f) + (yIconSize * 0.250f));
-			font->glPrintColorAt(xp, yp, fontScale, text);
+			        buttonBox.y2,
+			        buttonBox.x2,
+			        buttonBox.y2 + textHeight + (yIconSize * 0.25f));
+			font->glPrint(xp, yp, fontScale, FONT_CENTER | FONT_SCALE | FONT_NORM, menuName);
 		}
 		else {
-			// use (alpha == 0.0) so that we only get the outline
-			const float white[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
-			font->glPrintOutlinedAt(xp, yp, fontScale, text, white);
-			font->glPrintColorAt(xp, yp, fontScale, text);
+			font->SetColors(); // default
+			font->glPrint(xp, yp, fontScale, FONT_CENTER | FONT_OUTLINE | FONT_SCALE | FONT_NORM, menuName);
 		}
 	}
 
@@ -3202,7 +3168,7 @@ void CGuiHandler::DrawMenuName() // Only called by drawbuttons
 
 void CGuiHandler::DrawSelectionInfo()
 {
-	GML_RECMUTEX_LOCK(sel); // Draw --> DrawButtons --> DrawSelectionInfo
+	GML_RECMUTEX_LOCK(sel); // DrawSelectionInfo - called from Draw --> DrawButtons 
 
 	if (!selectedUnits.selectedUnits.empty()) {
 		std::ostringstream buf;
@@ -3214,33 +3180,33 @@ void CGuiHandler::DrawSelectionInfo()
 		}
 
 		const float fontScale = 1.0f;
+		const float fontSize  = fontScale * smallFont->GetSize();
 
 		if (!outlineFonts) {
-			const float textWidth  = fontScale * smallFont->CalcTextWidth(buf.str().c_str());
-			const float textHeight = fontScale * smallFont->CalcTextHeight(buf.str().c_str());
+			float descender;
+			const float textWidth  = fontSize * smallFont->GetTextWidth(buf.str()) * gu->pixelX;
+			float textHeight = fontSize * smallFont->GetTextHeight(buf.str(), &descender) * gu->pixelY;
+			const float textDescender = fontSize * descender * gu->pixelY; //! descender is always negative
+			textHeight -= textDescender;
 
 			glDisable(GL_TEXTURE_2D);
 			glColor4f(0.2f, 0.2f, 0.2f, guiAlpha);
 			glRectf(xSelectionPos - frameBorder,
-							ySelectionPos - frameBorder,
-							xSelectionPos + frameBorder + textWidth,
-							ySelectionPos + frameBorder + (textHeight * 1.2f));
+			        ySelectionPos - frameBorder,
+			        xSelectionPos + frameBorder + textWidth,
+			        ySelectionPos + frameBorder + textHeight);
 			glColor4f(1.0f, 1.0f, 1.0f, 0.8f);
-			smallFont->glPrintAt(xSelectionPos, ySelectionPos, fontScale, buf.str().c_str());
+			smallFont->glPrint(xSelectionPos, ySelectionPos - textDescender, fontSize, FONT_BASELINE | FONT_NORM, buf.str());
+		} else {
+			smallFont->SetColors(); // default
+			smallFont->glPrint(xSelectionPos, ySelectionPos, fontSize, FONT_OUTLINE | FONT_NORM, buf.str());
 		}
-		else {
-			const float white[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-			smallFont->glPrintOutlinedAt(xSelectionPos, ySelectionPos, fontScale, buf.str().c_str(), white);
-		}
-		glLoadIdentity();
 	}
 }
 
 
 void CGuiHandler::DrawNumberInput() // Only called by drawbuttons
 {
-//	GML_RECMUTEX_LOCK(gui); // DrawNumberInput
-
 	// draw the value for CMDTYPE_NUMBER commands
 	if ((inCommand >= 0) && ((size_t)inCommand < commands.size())) {
 		const CommandDescription& cd = commands[inCommand];
@@ -3257,16 +3223,16 @@ void CGuiHandler::DrawNumberInput() // Only called by drawbuttons
 			glColor4f(0.0f, 0.0f, 1.0f, 0.8f);
 			glRectf(0.25f, 0.49f, 0.75f, 0.51f);
 			glBegin(GL_TRIANGLES);
-			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
-			glVertex2f(slideX + 0.015f, 0.55f);
-			glVertex2f(slideX - 0.015f, 0.55f);
-			glVertex2f(slideX, 0.50f);
-			glVertex2f(slideX - 0.015f, 0.45f);
-			glVertex2f(slideX + 0.015f, 0.45f);
-			glVertex2f(slideX, 0.50f);
+				glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+				glVertex2f(slideX + 0.015f, 0.55f);
+				glVertex2f(slideX - 0.015f, 0.55f);
+				glVertex2f(slideX, 0.50f);
+				glVertex2f(slideX - 0.015f, 0.45f);
+				glVertex2f(slideX + 0.015f, 0.45f);
+				glVertex2f(slideX, 0.50f);
 			glEnd();
 			glColor4f(1.0f, 1.0f, 1.0f, 0.9f);
-			font->glPrintCentered(slideX, 0.56f, 2.0f, "%i", (int)value);
+			font->glFormat(slideX, 0.56f, 2.0f, FONT_CENTER | FONT_SCALE | FONT_NORM, "%i", (int)value);
 		}
 	}
 }
@@ -3281,11 +3247,11 @@ void CGuiHandler::DrawPrevArrow(const IconInfo& icon)
 	const float xSiz2 = 2.0f * xSize;
 	glDisable(GL_TEXTURE_2D);
 	glBegin(GL_POLYGON);
-	glVertex2f(b.x2 - xSize, yCenter - ySize);
-	glVertex2f(b.x1 + xSiz2, yCenter - ySize);
-	glVertex2f(b.x1 + xSize, yCenter);
-	glVertex2f(b.x1 + xSiz2, yCenter + ySize);
-	glVertex2f(b.x2 - xSize, yCenter + ySize);
+		glVertex2f(b.x2 - xSize, yCenter - ySize);
+		glVertex2f(b.x1 + xSiz2, yCenter - ySize);
+		glVertex2f(b.x1 + xSize, yCenter);
+		glVertex2f(b.x1 + xSiz2, yCenter + ySize);
+		glVertex2f(b.x2 - xSize, yCenter + ySize);
 	glEnd();
 }
 
@@ -3299,11 +3265,11 @@ void CGuiHandler::DrawNextArrow(const IconInfo& icon)
 	const float xSiz2 = 2.0f * xSize;
 	glDisable(GL_TEXTURE_2D);
 	glBegin(GL_POLYGON);
-	glVertex2f(b.x1 + xSize, yCenter - ySize);
-	glVertex2f(b.x2 - xSiz2, yCenter - ySize);
-	glVertex2f(b.x2 - xSize, yCenter);
-	glVertex2f(b.x2 - xSiz2, yCenter + ySize);
-	glVertex2f(b.x1 + xSize, yCenter + ySize);
+		glVertex2f(b.x1 + xSize, yCenter - ySize);
+		glVertex2f(b.x2 - xSiz2, yCenter - ySize);
+		glVertex2f(b.x2 - xSize, yCenter);
+		glVertex2f(b.x2 - xSiz2, yCenter + ySize);
+		glVertex2f(b.x1 + xSize, yCenter + ySize);
 	glEnd();
 }
 
@@ -3464,8 +3430,6 @@ static inline void DrawWeaponArc(const CUnit* unit)
 
 void CGuiHandler::DrawMapStuff(int onMinimap)
 {
-//	GML_RECMUTEX_LOCK(gui); // DrawMapStuff
-
 	if (!onMinimap) {
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);
@@ -3476,19 +3440,14 @@ void CGuiHandler::DrawMapStuff(int onMinimap)
 	}
 
 	float3 camerapos=camera->pos;
-	//CCamera tmpcam(*camera);
-	//	CCamera *camera=&tmpcam;
 	float3 mousedir=mouse->dir;
 
 	// setup for minimap proxying
-//	float3 tmpCamPos, tmpMouseDir;
 	const bool minimapCoords =
 		(minimap->ProxyMode() ||
 		 ((activeReceiver != this) && !game->hideInterface &&
 		  (GetReceiverAt(mouse->lastx, mouse->lasty) == minimap)));
 	if (minimapCoords) {
-//		tmpCamPos = camera->pos;
-//		tmpMouseDir = mouse->dir;
 		camerapos = minimap->GetMapPosition(mouse->lastx, mouse->lasty);
 		mousedir = float3(0.0f, -1.0f, 0.0f);
 		if (miniMapMarker && minimap->FullProxy() &&
@@ -3576,9 +3535,6 @@ void CGuiHandler::DrawMapStuff(int onMinimap)
 								float3 p(pos.x, 0.0f, pos.z);
 								p.x += fastmath::sin(radians) * radius;
 								p.z += fastmath::cos(radians) * radius;
-								if (!onMinimap) {
-									p.y = ground->GetHeight(pos.x, pos.z) + 5.0f;
-								}
 								glVertexf3(p);
 							}
 							glEnd();
@@ -3626,10 +3582,11 @@ void CGuiHandler::DrawMapStuff(int onMinimap)
 
 	// draw the ranges for the unit that is being pointed at
 	CUnit* pointedAt = NULL;
+
 	GML_RECMUTEX_LOCK(unit); // DrawMapStuff
+
 	if (GetQueueKeystate()) {
 		CUnit* unit = NULL;
-//		GML_RECMUTEX_LOCK(quad);  // getselectunit, guitraceray accesses quadfield
 		if (minimapCoords) {
 			unit = minimap->GetSelectUnit(camerapos);
 		} else {
@@ -3653,6 +3610,7 @@ void CGuiHandler::DrawMapStuff(int onMinimap)
 			// draw decloak distance
 			if (unit->decloakDistance > 0.0f) {
 				glColor4fv(cmdColors.rangeDecloak);
+#ifndef USE_GML
 				if (unit->unitDef->decloakSpherical && gu->drawdebug) {
 					glPushMatrix();
 					glTranslatef(unit->midPos.x, unit->midPos.y, unit->midPos.z);
@@ -3662,8 +3620,9 @@ void CGuiHandler::DrawMapStuff(int onMinimap)
 					gluSphere(q, unit->decloakDistance, 10, 10);
 					gluDeleteQuadric(q);
 					glPopMatrix();
-				}
-				else { // cylindrical
+				} else
+#endif
+				{ // cylindrical
 					glSurfaceCircle(unit->pos, unit->decloakDistance, 40);
 				}
 			}
@@ -3750,8 +3709,7 @@ void CGuiHandler::DrawMapStuff(int onMinimap)
 				// get the build information
 				float3 pos = camerapos+mousedir*dist;
 				std::vector<BuildInfo> buildPos;
-				const CMouseHandler::ButtonPress& bp = mouse->buttons[SDL_BUTTON_LEFT];
-//			GML_RECMUTEX_LOCK(quad);  // getbuildpos accesses quadfield
+				const CMouseHandler::ButtonPressEvt& bp = mouse->buttons[SDL_BUTTON_LEFT];
 				if (GetQueueKeystate() && bp.pressed) {
 					const float dist = ground->LineGroundCol(bp.camPos, bp.camPos + bp.dir * gu->viewRange * 1.4f);
 					const float3 pos2 = bp.camPos + bp.dir * dist;
@@ -3843,7 +3801,6 @@ void CGuiHandler::DrawMapStuff(int onMinimap)
 		}
 	}
 
-//	GML_RECMUTEX_LOCK(quad); // getdefaultcommand calls guitraceray which accesses quadfield
 	// draw range circles if attack orders are imminent
 	int defcmd = GetDefaultCommand(mouse->lastx, mouse->lasty, camerapos, mousedir);
 	if ((inCommand>=0 && (size_t)inCommand<commands.size() && commands[inCommand].id==CMD_ATTACK) ||
@@ -3938,14 +3895,12 @@ void CGuiHandler::DrawMiniMapMarker(float3& camerapos)
 
 void CGuiHandler::DrawCentroidCursor()
 {
-	GML_RECMUTEX_LOCK(sel); // CMouseHandler::DrawCursor --> DrawCentroidCursor
+	GML_RECMUTEX_LOCK(sel); // DrawCentroidCursor - called From CMouseHandler::DrawCursor
 
 	const CUnitSet& selUnits = selectedUnits.selectedUnits;
 	if (selUnits.size() < 2) {
 		return;
 	}
-
-//	GML_RECMUTEX_LOCK(gui); // DrawCentroidCursor. Not needed, Draw thread.
 
 	int cmd = -1;
 	if ((inCommand >= 0) && ((size_t)inCommand < commands.size())) {
@@ -4027,7 +3982,7 @@ void CGuiHandler::DrawArea(float3 pos, float radius, const float* color)
 
 void CGuiHandler::DrawFront(int button,float maxSize,float sizeDiv, bool onMinimap, float3& camerapos, float3& mousedir)
 {
-	CMouseHandler::ButtonPress& bp = mouse->buttons[button];
+	CMouseHandler::ButtonPressEvt& bp = mouse->buttons[button];
 	if(bp.movement<5){
 		return;
 	}
@@ -4174,9 +4129,9 @@ static void StencilDrawSelectBox(const float3& pos0, const float3& pos1,
                                  bool invColorSelect)
 {
 	BoxData boxData;
-	boxData.mins = float3(std::min(pos0.x, pos1.x), readmap->minheight - 250.0f,
+	boxData.mins = float3(std::min(pos0.x, pos1.x), readmap->currMinHeight - 250.0f,
 	                       std::min(pos0.z, pos1.z));
-	boxData.maxs = float3(std::max(pos0.x, pos1.x), readmap->maxheight + 10000.0f,
+	boxData.maxs = float3(std::max(pos0.x, pos1.x), readmap->currMaxHeight + 10000.0f,
 	                      std::max(pos0.z, pos1.z));
 
 	glDisable(GL_TEXTURE_2D);
@@ -4249,9 +4204,9 @@ void CGuiHandler::DrawSelectBox(const float3& pos0, const float3& pos1, float3& 
 		return;
 	}
 
-	const float3 mins(std::min(pos0.x, pos1.x), readmap->minheight - 250.0f,
+	const float3 mins(std::min(pos0.x, pos1.x), readmap->currMinHeight - 250.0f,
 	                  std::min(pos0.z, pos1.z));
-	const float3 maxs(std::max(pos0.x, pos1.x), readmap->maxheight + 10000.0f,
+	const float3 maxs(std::max(pos0.x, pos1.x), readmap->currMaxHeight + 10000.0f,
 	                  std::max(pos0.z, pos1.z));
 
 	glDisable(GL_TEXTURE_2D);
@@ -4338,8 +4293,8 @@ void CGuiHandler::DrawSelectCircle(const float3& pos, float radius,
 	CylinderData cylData;
 	cylData.xc = pos.x;
 	cylData.zc = pos.z;
-	cylData.yp = readmap->maxheight + 10000.0f;
-	cylData.yn = readmap->minheight - 250.0f;
+	cylData.yp = readmap->currMaxHeight + 10000.0f;
+	cylData.yn = readmap->currMinHeight - 250.0f;
 	cylData.radius = radius;
 	cylData.divs = 128;
 

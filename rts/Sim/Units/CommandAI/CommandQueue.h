@@ -18,7 +18,9 @@ class CCommandQueue {
 	friend class CFactoryCAI;
 	friend class CAIAICallback; // the C++ AI interface wrapper
 
+	// see CommandAI.cpp for further creg stuff for this class
 	CR_DECLARE(CCommandQueue);
+
 	public:
 		enum QueueType {
 			CommandQueueType,
@@ -29,7 +31,7 @@ class CCommandQueue {
 		inline QueueType GetType() const { return queueType; }
 
 	public:
-		// limit to a float's integer range
+		/// limit to a float's integer range
 		static const int maxTagValue = (1 << 24); // 16777216
 
 		typedef std::deque<Command> basis;
@@ -49,25 +51,35 @@ class CCommandQueue {
 
 		inline iterator insert(iterator pos, const Command& cmd);
 
-		inline void pop_back()  { 
+		inline void pop_back()
+		{ 
 			GML_STDMUTEX_LOCK(cai); // pop_back
+
 			queue.pop_back(); 
 		}
-		inline void pop_front() { 
+		inline void pop_front()
+		{ 
 			GML_STDMUTEX_LOCK(cai); // pop_front
+
 			queue.pop_front(); 
 		}
 
-		inline iterator erase(iterator pos) {
+		inline iterator erase(iterator pos)
+		{
 			GML_STDMUTEX_LOCK(cai); // erase
+
 			return queue.erase(pos);
 		}
-		inline iterator erase(iterator first, iterator last) {
+		inline iterator erase(iterator first, iterator last)
+		{
 			GML_STDMUTEX_LOCK(cai); // erase
+
 			return queue.erase(first, last);
 		}
-		inline void clear() { 
+		inline void clear()
+		{ 
 			GML_STDMUTEX_LOCK(cai); // clear 
+
 			queue.clear(); 
 		}
 
@@ -121,6 +133,7 @@ inline int CCommandQueue::GetNextTag()
 inline void CCommandQueue::push_back(const Command& cmd)
 {
 	GML_STDMUTEX_LOCK(cai); // push_back
+
 	queue.push_back(cmd);
 	queue.back().tag = GetNextTag();
 }
@@ -129,6 +142,7 @@ inline void CCommandQueue::push_back(const Command& cmd)
 inline void CCommandQueue::push_front(const Command& cmd)
 {
 	GML_STDMUTEX_LOCK(cai); // push_front
+
 	queue.push_front(cmd);
 	queue.front().tag = GetNextTag();
 }

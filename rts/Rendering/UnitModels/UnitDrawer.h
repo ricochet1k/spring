@@ -31,7 +31,7 @@ public:
 	void DoDrawUnit(CUnit *unit, bool drawReflection, bool drawRefraction, CUnit *excludeUnit);
 	void DrawUnitLOD(CUnit* unit);
 
-	void DrawCloakedUnits(void);     // cloaked units must be drawn after all others
+	void DrawCloakedUnits(bool submerged);     // cloaked units must be drawn after all others
 	void DrawShadowPass(void);
 	void DoDrawUnitShadow(CUnit *unit);
 
@@ -39,7 +39,7 @@ public:
 	void DrawCloakedShaderUnits();
 	void DrawShadowShaderUnits();
 
-	void SetTeamColour(int team) const;
+	void SetTeamColour(int team, float alpha = 1.0f) const;
 	void SetupFor3DO() const;
 	void CleanUp3DO() const;
 	void SetupForUnitDrawing(void) const;
@@ -100,6 +100,8 @@ public:
 	CVertexArray* va;
 
 	bool advShading;
+	bool advFade;
+	float cloakAlpha;
 
 	float LODScale;
 	float LODScaleShadow;

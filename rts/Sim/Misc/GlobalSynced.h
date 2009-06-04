@@ -4,7 +4,7 @@
 #include <string>
 
 #include "float3.h"
-#include "creg/creg.h"
+#include "creg/creg_cond.h"
 
 
 class CGameSetup;
@@ -150,7 +150,7 @@ public:
 	/**
 	* @brief disable helper AIs
 	*
-	* Whether helper AIs are allowed, including GroupAI and LuaUI control widgets
+	* Whether helper AIs are allowed, including LuaUI control widgets
 	*/
 	bool noHelperAIs;
 
@@ -162,21 +162,11 @@ public:
 	bool editDefsEnabled;
 
 	/**
-	* @brief LuaRules control
-	*
-	* Whether or not LuaRules is enabled
-	*/
-	bool useLuaRules;
-
-	/**
 	* @brief LuaGaia control
 	*
 	* Whether or not LuaGaia is enabled
 	*/
 	bool useLuaGaia;
-
-	// do not use, backward compatibility
-	int activeTeamsBackwardCompatForLuaBinder;
 
 private:
 	/**

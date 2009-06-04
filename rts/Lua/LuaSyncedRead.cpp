@@ -158,6 +158,7 @@ bool LuaSyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetTeamStatsHistory);
 	REGISTER_LUA_CFUNC(GetTeamLuaAI);
 
+	REGISTER_LUA_CFUNC(GetAllyTeamInfo);
 	REGISTER_LUA_CFUNC(AreTeamsAllied);
 	REGISTER_LUA_CFUNC(ArePlayersAllied);
 
@@ -1031,7 +1032,14 @@ int LuaSyncedRead::GetTeamInfo(lua_State* L)
 	lua_pushstring(L,  team->side.c_str());
 	lua_pushnumber(L,  teamHandler->AllyTeam(team->teamNum));
 
-	return 6;
+	lua_newtable(L);
+	const TeamBase::customOpts& popts(team->GetAllValues());
+	for (TeamBase::customOpts::const_iterator it = popts.begin(); it != popts.end(); ++it) {
+		lua_pushstring(L, it->first.c_str());
+		lua_pushstring(L, it->second.c_str());
+		lua_rawset(L, -3);
+	}
+	return 7;
 }
 
 
@@ -1249,7 +1257,14 @@ int LuaSyncedRead::GetPlayerInfo(lua_State* L)
 	lua_pushstring(L, player->countryCode.c_str());
 	lua_pushnumber(L, player->rank);
 
-	return 9;
+	lua_newtable(L);
+	const PlayerBase::customOpts& popts(player->GetAllValues());
+	for (PlayerBase::customOpts::const_iterator it = popts.begin(); it != popts.end(); ++it) {
+		lua_pushstring(L, it->first.c_str());
+		lua_pushstring(L, it->second.c_str());
+		lua_rawset(L, -3);
+	}
+	return 10;
 }
 
 
@@ -1283,6 +1298,22 @@ int LuaSyncedRead::GetPlayerControlledUnit(lua_State* L)
 #endif
 }
 
+int LuaSyncedRead::GetAllyTeamInfo(lua_State* L)
+{
+	const size_t allyteam = (size_t)luaL_checkint(L, -1);
+	if (!teamHandler->ValidAllyTeam(allyteam))
+		return 0;
+
+	const AllyTeam& ally = teamHandler->GetAllyTeam(allyteam);
+	lua_newtable(L);
+	const AllyTeam::customOpts& popts(ally.GetAllValues());
+	for (AllyTeam::customOpts::const_iterator it = popts.begin(); it != popts.end(); ++it) {
+		lua_pushstring(L, it->first.c_str());
+		lua_pushstring(L, it->second.c_str());
+		lua_rawset(L, -3);
+	}
+	return 1;
+}
 
 int LuaSyncedRead::AreTeamsAllied(lua_State* L)
 {
@@ -2707,10 +2738,20 @@ int LuaSyncedRead::GetUnitShieldState(lua_State* L)
 	if (unit == NULL) {
 		return 0;
 	}
-	const CPlasmaRepulser* shield = (CPlasmaRepulser*)unit->shieldWeapon;
+
+	CPlasmaRepulser* shield = NULL;
+	const int idx = luaL_optint(L, 2, -1);
+
+	if (idx < 0 || idx >= unit->weapons.size()) {
+		shield = (CPlasmaRepulser*) unit->shieldWeapon;
+	} else {
+		shield = dynamic_cast<CPlasmaRepulser*>(unit->weapons[idx]);
+	}
+
 	if (shield == NULL) {
 		return 0;
 	}
+
 	lua_pushnumber(L, shield->isEnabled);
 	lua_pushnumber(L, shield->curPower);
 	return 2;

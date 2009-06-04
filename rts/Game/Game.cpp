@@ -178,68 +178,116 @@ CGame* game = NULL;
 CR_BIND(CGame, (std::string(""), std::string(""), NULL));
 
 CR_REG_METADATA(CGame,(
-	CR_RESERVED(4),//r3927
+//	CR_MEMBER(drawMode),
+//	CR_MEMBER(defsParser), // temp-var, save irrelevant
 	CR_MEMBER(oldframenum),
 //	CR_MEMBER(fps),
 //	CR_MEMBER(thisFps),
-
+	CR_MEMBER(lastSimFrame),
+//	CR_MEMBER(fpstimer),
+//	CR_MEMBER(starttime),
 //	CR_MEMBER(lastUpdate),
 //	CR_MEMBER(lastMoveUpdate),
 //	CR_MEMBER(lastModGameTimeMeasure),
-//	CR_MEMBER(lastframe),
-
+//	CR_MEMBER(lastUpdateRaw),
+//	CR_MEMBER(updateDeltaSeconds),
 	CR_MEMBER(totalGameTime),
-
 	CR_MEMBER(userInputPrefix),
-
 	CR_MEMBER(lastTick),
 	CR_MEMBER(chatSound),
-
+//	CR_MEMBER(camMove),
+//	CR_MEMBER(camRot),
 	CR_MEMBER(hideInterface),
+	CR_MEMBER(gameOver),
+//	CR_MEMBER(windowedEdgeMove),
+//	CR_MEMBER(fullscreenEdgeMove),
 	CR_MEMBER(showFPS),
 	CR_MEMBER(showClock),
-	CR_MEMBER(crossSize),
 	CR_MEMBER(noSpectatorChat),
 	CR_MEMBER(drawFpsHUD),
-
+	CR_MEMBER(drawMapMarks),
+	CR_MEMBER(crossSize),
+//	CR_MEMBER(drawSky),
+//	CR_MEMBER(drawWater),
+//	CR_MEMBER(drawGround),
 	CR_MEMBER(moveWarnings),
-
-	CR_MEMBER(lastSimFrame),
-
+	CR_MEMBER(gameID),
 //	CR_MEMBER(script),
-	CR_RESERVED(64),
+//	CR_MEMBER(infoConsole),
+//	CR_MEMBER(consoleHistory),
+//	CR_MEMBER(wordCompletion),
+//	CR_MEMBER(creatingVideo),
+//	CR_MEMBER(aviGenerator),
+//	CR_MEMBER(hotBinding),
+//	CR_MEMBER(inputTextPosX),
+//	CR_MEMBER(inputTextPosY),
+//	CR_MEMBER(inputTextSizeX),
+//	CR_MEMBER(inputTextSizeY),
+//	CR_MEMBER(lastCpuUsageTime),
+//	CR_MEMBER(skipping),
+	CR_MEMBER(playing),
+//	CR_MEMBER(lastFrameTime),
+//	CR_MEMBER(leastQue),
+//	CR_MEMBER(timeLeft),
+//	CR_MEMBER(consumeSpeed),
+//	CR_MEMBER(lastframe),
+//	CR_MEMBER(leastQue),
+//#ifdef DIRECT_CONTROL_ALLOWED // we cant have preprocessor directives here, MSVC chokes on it
+	CR_MEMBER(oldHeading),
+	CR_MEMBER(oldPitch),
+	CR_MEMBER(oldStatus),
+//#endif
+
 	CR_POSTLOAD(PostLoad)
 ));
 
 
-CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFile)
-: drawMode(notDrawing),
-  drawSky(true),
-  drawWater(true),
-  drawGround(true),
-  lastFrameTime(0)
+CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFile):
+	drawMode(notDrawing),
+	defsParser(NULL),
+	oldframenum(0),
+	fps(0),
+	thisFps(0),
+	lastSimFrame(-1),
+
+	totalGameTime(0),
+
+	hideInterface(false),
+
+	gameOver(false),
+
+	noSpectatorChat(false),
+	drawFpsHUD(true),
+	drawMapMarks(true),
+
+	drawSky(true),
+	drawWater(true),
+	drawGround(true),
+
+	script(NULL),
+
+	creatingVideo(false),
+
+	skipping(false),
+	playing(false),
+	chatting(false),
+	lastFrameTime(0),
+
+	leastQue(0),
+	timeLeft(0.0f),
+	consumeSpeed(1.0f)
 {
 	game = this;
 	boost::thread thread(boost::bind<void, CNetProtocol, CNetProtocol*>(&CNetProtocol::UpdateLoop, net));
 
 	CPlayer::UpdateControlledTeams();
 
-	leastQue = 0;
-	timeLeft = 0.0f;
-	consumeSpeed = 1.0f;
-
 	memset(gameID, 0, sizeof(gameID));
 
 	infoConsole = new CInfoConsole();
 
-	script = NULL;
-
-	defsParser = NULL;
-
 	time(&starttime);
 	lastTick = clock();
-
-	oldframenum = 0;
 
 	for(int a = 0; a < 8; ++a) {
 		camMove[a] = false;
@@ -247,22 +295,6 @@ CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFil
 	for(int a = 0; a < 4; ++a) {
 		camRot[a] = false;
 	}
-
-	fps = 0;
-	thisFps = 0;
-	totalGameTime = 0;
-
-	lastSimFrame=-1;
-
-	creatingVideo = false;
-
-	playing  = false;
-	gameOver = false;
-	skipping = false;
-
-	drawFpsHUD = true;
-	drawMapMarks = true;
-	hideInterface = false;
 
 	windowedEdgeMove   = !!configHandler->Get("WindowedEdgeMove",   1);
 	fullscreenEdgeMove = !!configHandler->Get("FullscreenEdgeMove", 1);
@@ -275,13 +307,12 @@ CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFil
 	playerRoster.SetSortTypeByCode(
 	  (PlayerRoster::SortType)configHandler->Get("ShowPlayerInfo", 1));
 
+	CInputReceiver::guiAlpha = configHandler->Get("GuiOpacity",  0.8f);
+
 	const string inputTextGeo = configHandler->GetString("InputTextGeo", "");
 	ParseInputTextGeometry("default");
 	ParseInputTextGeometry(inputTextGeo);
 
-	noSpectatorChat = false;
-
-	chatting   = false;
 	userInput  = "";
 	writingPos = 0;
 	userPrompt = "";
@@ -323,11 +354,14 @@ CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFil
 		throw content_error(sideParser.GetErrorLog());
 	}
 
+	PrintLoadMsg("Parsing definitions");
+
 	defsParser = new LuaParser("gamedata/defs.lua",
 	                                SPRING_VFS_MOD_BASE, SPRING_VFS_ZIP);
 	// customize the defs environment
 	defsParser->GetTable("Spring");
 	defsParser->AddFunc("GetModOptions", LuaSyncedRead::GetModOptions);
+	defsParser->AddFunc("GetMapOptions", LuaSyncedRead::GetMapOptions);
 	defsParser->EndTable();
 	// run the parser
 	if (!defsParser->Execute()) {
@@ -360,6 +394,9 @@ CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFil
 	shadowHandler = new CShadowHandler();
 
 	ground = new CGround();
+
+	PrintLoadMsg("Loading map informations");
+
 	mapInfo = new CMapInfo(mapname); // must go before readmap
 	readmap = CReadMap::LoadMap (mapname);
 	groundBlockingObjectMap = new CGroundBlockingObjectMap(gs->mapSquares);
@@ -367,7 +404,6 @@ CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFil
 	moveinfo = new CMoveInfo();
 	groundDecals = new CGroundDecalHandler();
 	ReColorTeams();
-
 
 	guihandler = new CGuiHandler();
 	minimap = new CMiniMap();
@@ -403,6 +439,7 @@ CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFil
 
 	featureHandler->LoadFeaturesFromMap(saveFile || CScriptHandler::Instance().chosenScript->loadGame);
 	pathManager = new CPathManager();
+
 #ifdef SYNCCHECK
 	// update the checksum with path data
 	{ SyncedUint tmp(pathManager->GetPathChecksum()); }
@@ -428,10 +465,9 @@ CGame::CGame(std::string mapname, std::string modName, CLoadSaveHandler *saveFil
 	CPlayer* p = playerHandler->Player(gu->myPlayerNum);
 	GameSetupDrawer::Enable();
 
-	if (gs->useLuaRules) {
-		PrintLoadMsg("Loading LuaRules");
-		CLuaRules::LoadHandler();
-	}
+	PrintLoadMsg("Loading LuaRules");
+	CLuaRules::LoadHandler();
+
 	if (gs->useLuaGaia) {
 		PrintLoadMsg("Loading LuaGaia");
 		CLuaGaia::LoadHandler();
@@ -612,7 +648,6 @@ void CGame::ResizeEvent()
 }
 
 
-//called when the key is pressed by the user (can be called several times due to key repeat)
 int CGame::KeyPressed(unsigned short k, bool isRepeat)
 {
 	if (!gameOver && !isRepeat) {
@@ -825,7 +860,6 @@ int CGame::KeyPressed(unsigned short k, bool isRepeat)
 }
 
 
-//Called when a key is released by the user
 int CGame::KeyReleased(unsigned short k)
 {
 	//	keys[k] = false;
@@ -1002,6 +1036,7 @@ bool CGame::ActionPressed(const Action& action,
 		mouse->MousePress (mouse->lastx, mouse->lasty, 5);
 	}
 	else if (cmd == "viewselection") {
+
 		GML_RECMUTEX_LOCK(sel); // ActionPressed
 
 		const CUnitSet& selUnits = selectedUnits.selectedUnits;
@@ -1204,34 +1239,20 @@ bool CGame::ActionPressed(const Action& action,
 			logOutput.Print("Sound enabled");
 		}
 	}
-	else if (cmd == "volume") { // master volume
+	else if (cmd == "volume") { // deprecated, use "/set snd_volmaster X" instead
 		char* endPtr;
 		const char* startPtr = action.extra.c_str();
 		float volume = std::max(0.0f, std::min(1.0f, (float)strtod(startPtr, &endPtr)));
 		if (endPtr != startPtr) {
-			sound->SetVolume(volume);
-			configHandler->Set("SoundVolume", (int)(volume * 100.0f));
+			configHandler->Set("snd_volmaster", volume);
 		}
 	}
-	else if (cmd == "soundchannelvolume" || cmd == "unitreplyvolume") {
-		std::string channel = "UnitReply";
+	else if (cmd == "unitreplyvolume") { // deprecated, use "/set snd_volunitreply X" instead
 		float newVol = 1.0;
 		std::istringstream buf(action.extra);
-		if (cmd == "soundchannelvolume")
-		{
-			buf >> channel;
-		}
 		buf >> newVol;
 		const float volume = std::max(0.0f, std::min(1.0f, newVol));
-
-		if (channel == "UnitReply")
-			Channels::UnitReply.SetVolume(volume);
-		else if (channel == "General")
-			Channels::General.SetVolume(volume);
-		else if (channel == "Battle")
-			Channels::Battle.SetVolume(volume);
-		else if (channel == "UserInterface")
-			Channels::UserInterface.SetVolume(volume);
+		Channels::UnitReply.SetVolume(volume);
 	}
 	else if (cmd == "soundchannelenable") {
 		std::string channel;
@@ -1517,63 +1538,21 @@ bool CGame::ActionPressed(const Action& action,
 		if(!inputReceivers.empty() && dynamic_cast<CShareBox*>(inputReceivers.front())==0 && !gu->spectating)
 			new CShareBox();
 	}
-	else if (cmd == "quitwarn") {
-		const CKeyBindings::HotkeyList hkl = keyBindings->GetHotkeys("quit");
-		if (hkl.empty()) {
-			logOutput.Print("How odd, you appear to be lacking a \"quit\" binding");
-		} else {
-			logOutput.Print("Use %s to quit", hkl[0].c_str());
-		}
+	else if (cmd == "quitmenu") {
+		if (!inputReceivers.empty() && dynamic_cast<CQuitBox*>(inputReceivers.front()) == 0)
+			new CQuitBox();
 	}
-	else if (cmd == "quit") {
-		//The user wants to quit. Do we let him?
-		bool userMayQuit=false;
-		// Six cases when he may quit:
-		//  * If the game isn't started players are free to leave.
-		//  * If the game is over
-		//  * If his team is dead.
-		//  * If he's a spectator.
-		//  * If there are other active players on his team.
-		//  * If there are no other players
-		if (!playing || gameOver || teamHandler->Team(gu->myTeam)->isDead || gu->spectating) {
-			userMayQuit = true;
-		}
-		else {
-			// Check if there are more active players on his team.
-			bool onlyActive = true;
-			for (int a = 0; a < playerHandler->ActivePlayers(); ++a) {
-				if (a != gu->myPlayerNum) {
-					if (playerHandler->Player(a)->active) {
-						onlyActive = false;
-						if (playerHandler->Player(a)->team == gu->myTeam) {
-							userMayQuit = true;
-							break;
-						}
-					}
-				}
-			}
-			// If you are the only remaining active player, you can quit immediately
-			if (onlyActive) {
-				userMayQuit = true;
-			}
-		}
-
-		// User may not quit if he is the only player in his still active team.
-		// Present him with the options given in CQuitBox.
-		if (!userMayQuit) {
-			if (!inputReceivers.empty() && dynamic_cast<CQuitBox*>(inputReceivers.front()) == 0) {
-				new CQuitBox();
-			}
-		} else {
-			logOutput.Print("User exited");
-			globalQuit = true;
-		}
+	else if (cmd == "quitforce") {
+		logOutput.Print("User exited");
+		globalQuit = true;
 	}
 	else if (cmd == "incguiopacity") {
 		CInputReceiver::guiAlpha = std::min(CInputReceiver::guiAlpha+0.1f,1.0f);
+		configHandler->Set("GuiOpacity", CInputReceiver::guiAlpha);
 	}
 	else if (cmd == "decguiopacity") {
 		CInputReceiver::guiAlpha = std::max(CInputReceiver::guiAlpha-0.1f,0.0f);
+		configHandler->Set("GuiOpacity", CInputReceiver::guiAlpha);
 	}
 
 	else if (cmd == "screenshot") {
@@ -1688,8 +1667,15 @@ bool CGame::ActionPressed(const Action& action,
 	else if (cmd == "font") {
 		CglFont *newFont = NULL, *newSmallFont = NULL;
 		try {
-			newFont = CglFont::TryConstructFont(action.extra, font->GetCharStart(), font->GetCharEnd(), 0.027f);
-			newSmallFont = CglFont::TryConstructFont(action.extra, smallFont->GetCharStart(), smallFont->GetCharEnd(), 0.016f);
+			const int fontSize = configHandler->Get("FontSize", 23);
+			const int smallFontSize = configHandler->Get("SmallFontSize", 14);
+			const int outlineWidth = configHandler->Get("FontOutlineWidth", 3);
+			const float outlineWeight = configHandler->Get("FontOutlineWeight", 25.0f);
+			const int smallOutlineWidth = configHandler->Get("SmallFontOutlineWidth", 2);
+			const float smallOutlineWeight = configHandler->Get("SmallFontOutlineWeight", 10.0f);
+
+			newFont = CglFont::LoadFont(action.extra, fontSize, outlineWidth, outlineWeight);
+			newSmallFont = CglFont::LoadFont(action.extra, smallFontSize, smallOutlineWidth, smallOutlineWeight);
 		} catch (std::exception e) {
 			if (newFont) delete newFont;
 			if (newSmallFont) delete newSmallFont;
@@ -1703,7 +1689,7 @@ bool CGame::ActionPressed(const Action& action,
 			smallFont = newSmallFont;
 			logOutput.Print("Loaded font: %s\n", action.extra.c_str());
 			configHandler->SetString("FontFile", action.extra);
-			LuaOpenGL::CalcFontHeight();
+			configHandler->SetString("SmallFontFile", action.extra);
 		}
 	}
 	else if (cmd == "aiselect") {
@@ -1832,6 +1818,13 @@ bool CGame::ActionPressed(const Action& action,
 			const int value = std::max(1, atoi(action.extra.c_str()));
 			ph->SetMaxParticles(value);
 			logOutput.Print("Set maximum particles to: %i", value);
+		}
+	}
+	else if (cmd == "maxnanoparticles") {
+		if (ph && !action.extra.empty()) {
+			const int value = std::max(1, atoi(action.extra.c_str()));
+			ph->SetMaxNanoParticles(value);
+			logOutput.Print("Set maximum nano-particles to: %i", value);
 		}
 	}
 	else if (cmd == "gathermode") {
@@ -2123,7 +2116,7 @@ void CGame::ActionReceived(const Action& action, int playernum)
 				}
 			}
 		}
-		logOutput.Print("GroupAI and LuaUI control is %s", gs->noHelperAIs ? "disabled" : "enabled");
+		logOutput.Print("LuaUI control is %s", gs->noHelperAIs ? "disabled" : "enabled");
 	}
 	else if (action.command == "godmode") {
 		if (!gs->cheatEnabled)
@@ -2241,7 +2234,7 @@ void CGame::ActionReceived(const Action& action, int playernum)
 				const UnitDef* ud = &unitDefHandler->unitDefs[a];
 				if (ud->valid) {
 					const CUnit* unit =
-						unitLoader.LoadUnit(ud->name, pos2, team, false, 0, NULL);
+						unitLoader.LoadUnit(ud, pos2, team, false, 0, NULL);
 					if (unit) {
 						unitLoader.FlattenGround(unit);
 					}
@@ -2279,7 +2272,7 @@ void CGame::ActionReceived(const Action& action, int playernum)
 						float minposx = minpos.x + x * xsize * SQUARE_SIZE;
 						float minposz = minpos.z + z * zsize * SQUARE_SIZE;
 						const float3 upos(minposx, minpos.y, minposz);
-						const CUnit* unit = unitLoader.LoadUnit(unitName, upos, team, false, 0, NULL);
+						const CUnit* unit = unitLoader.LoadUnit(unitDef, upos, team, false, 0, NULL);
 
 						if (unit) {
 							unitLoader.FlattenGround(unit);
@@ -2367,34 +2360,29 @@ void CGame::ActionReceived(const Action& action, int playernum)
 			logOutput.Print("No definition Editing");
 	}
 	else if ((action.command == "luarules") && (gs->frameNum > 1)) {
-		if (gs->useLuaRules) {
-			if ((action.extra == "reload") && (playernum == 0)) {
-				if (!gs->cheatEnabled) {
-					logOutput.Print("Cheating required to reload synced scripts");
+		if ((action.extra == "reload") && (playernum == 0)) {
+			if (!gs->cheatEnabled) {
+				logOutput.Print("Cheating required to reload synced scripts");
+			} else {
+				CLuaRules::FreeHandler();
+				CLuaRules::LoadHandler();
+				if (luaRules) {
+					logOutput.Print("LuaRules reloaded");
 				} else {
-					CLuaRules::FreeHandler();
-					CLuaRules::LoadHandler();
-					if (luaRules) {
-						logOutput.Print("LuaRules reloaded");
-					} else {
-						logOutput.Print("LuaRules reload failed");
-					}
+					logOutput.Print("LuaRules reload failed");
 				}
 			}
-			else if ((action.extra == "disable") && (playernum == 0)) {
-				if (!gs->cheatEnabled) {
-					logOutput.Print("Cheating required to disable synced scripts");
-				} else {
-					CLuaRules::FreeHandler();
-					logOutput.Print("LuaRules disabled");
-				}
+		}
+		else if ((action.extra == "disable") && (playernum == 0)) {
+			if (!gs->cheatEnabled) {
+				logOutput.Print("Cheating required to disable synced scripts");
+			} else {
+				CLuaRules::FreeHandler();
+				logOutput.Print("LuaRules disabled");
 			}
-			else if (luaRules) {
-				luaRules->GotChatMsg(action.extra, playernum);
-			}
-			else {
-				logOutput.Print("LuaRules is not enabled");
-			}
+		}
+		else {
+			if (luaRules) luaRules->GotChatMsg(action.extra, playernum);
 		}
 	}
 	else if ((action.command == "luagaia") && (gs->frameNum > 1)) {
@@ -2580,8 +2568,12 @@ bool CGame::DrawWorld()
 
 	CBaseGroundDrawer* gd = readmap->GetGroundDrawer();
 
-	for (std::list<CUnit*>::iterator usi = uh->renderUnits.begin(); usi != uh->renderUnits.end(); ++usi) {
-		(*usi)->UpdateDrawPos();
+	{
+		GML_RECMUTEX_LOCK(unit); // DrawWorld
+
+		for (std::list<CUnit*>::iterator usi = uh->renderUnits.begin(); usi != uh->renderUnits.end(); ++usi) {
+			(*usi)->UpdateDrawPos();
+		}
 	}
 
 	if (drawSky) {
@@ -2613,13 +2605,22 @@ bool CGame::DrawWorld()
 	unitDrawer->Draw(false);
 	featureHandler->Draw();
 
+#if !defined(USE_GML) || !GML_ENABLE_SIM // Pathmanager is not thread safe
 	if (gu->drawdebug && gs->cheatEnabled) {
 		pathManager->Draw();
 	}
-
+#endif
 	//transparent stuff
 	glEnable(GL_BLEND);
 	glDepthFunc(GL_LEQUAL);
+
+	bool clip = unitDrawer->advFade || !unitDrawer->advShading;
+	if(clip) { // draw cloaked part below surface
+		glEnable(GL_CLIP_PLANE3);
+		unitDrawer->DrawCloakedUnits(true);
+		featureHandler->DrawFadeFeatures(true);
+		glDisable(GL_CLIP_PLANE3);
+	}
 
 	if (drawWater) {
 		if (!mapInfo->map.voidWater && !water->drawSolid) {
@@ -2627,7 +2628,13 @@ bool CGame::DrawWorld()
 		}
 	}
 
-	unitDrawer->DrawCloakedUnits();
+	if(clip) // draw cloaked part above surface
+		glEnable(GL_CLIP_PLANE3);
+	unitDrawer->DrawCloakedUnits(false);
+	featureHandler->DrawFadeFeatures(false);
+	if(clip)
+		glDisable(GL_CLIP_PLANE3);
+
 	ph->Draw(false);
 
 	if (drawSky) {
@@ -2727,6 +2734,8 @@ bool CGame::Draw() {
 
 	mouse->EmptyMsgQueUpdate();
 
+	unitDrawer->Update();
+
 	if(lastSimFrame!=gs->frameNum) {
 		CInputReceiver::CollectGarbage();
 		if(!skipping)
@@ -2754,18 +2763,26 @@ bool CGame::Draw() {
 	modelParser->Update();
 	treeDrawer->UpdateDraw();
 	readmap->UpdateDraw();
+	fartextureHandler->CreateFarTextures();
 
 	LuaUnsyncedCtrl::ClearUnitCommandQueues();
-
 	eventHandler.Update();
-
 	eventHandler.DrawGenesis();
+
+#ifdef USE_GML
+	//! in non GML builds runs in SimFrame!
+	ph->UpdateTextures();
+	sky->Update();
+#endif
 
 	// XXX ugly hack to minimize luaUI errors
 	if (luaUI && luaUI->GetCallInErrors() >= 5) {
 		for (int annoy = 0; annoy < 8; annoy++) {
 			LogObject() << "5 errors deep in LuaUI, disabling...\n";
 		}
+
+		GML_STDMUTEX_LOCK(sim); // Draw
+		
 		guihandler->RunLayoutCommand("disable");
 		LogObject() << "Type '/luaui reload' in the chat to reenable LuaUI.\n";
 		LogObject() << "===>>>  Please report this error to the forum or mantis with your infolog.txt\n";
@@ -2787,11 +2804,6 @@ bool CGame::Draw() {
 		gu->timeOffset=0;
 		lastUpdate = SDL_GetTicks();
 	}
-
-	ph->UpdateTextures();
-	fartextureHandler->CreateFarTextures();
-
-	sky->Update();
 
 //	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -2844,7 +2856,7 @@ bool CGame::Draw() {
 		water->UpdateWater(this);
 	}
 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);	// Clear Screen And Depth&Stencil Buffer
 
 	if (doDrawWorld) {
 		DrawWorld();
@@ -2860,7 +2872,7 @@ bool CGame::Draw() {
 		glMatrixMode(GL_MODELVIEW);
 
 		glEnable(GL_BLEND);
-		glDisable(GL_DEPTH_TEST );
+		glDisable(GL_DEPTH_TEST);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glLoadIdentity();
 	}
@@ -2874,12 +2886,12 @@ bool CGame::Draw() {
 		glLineWidth(1.49f);
 		glDisable(GL_TEXTURE_2D);
 		glBegin(GL_LINES);
-		glVertex2f(0.5f - (crossSize / gu->viewSizeX), 0.5f);
-		glVertex2f(0.5f + (crossSize / gu->viewSizeX), 0.5f);
-		glVertex2f(0.5f, 0.5f - (crossSize / gu->viewSizeY));
-		glVertex2f(0.5f, 0.5f + (crossSize / gu->viewSizeY));
-		glLineWidth(1.0f);
+			glVertex2f(0.5f - (crossSize / gu->viewSizeX), 0.5f);
+			glVertex2f(0.5f + (crossSize / gu->viewSizeX), 0.5f);
+			glVertex2f(0.5f, 0.5f - (crossSize / gu->viewSizeY));
+			glVertex2f(0.5f, 0.5f + (crossSize / gu->viewSizeY));
 		glEnd();
+		glLineWidth(1.0f);
 	}
 
 #ifdef DIRECT_CONTROL_ALLOWED
@@ -2911,13 +2923,13 @@ bool CGame::Draw() {
 	glEnable(GL_TEXTURE_2D);
 
 	if (gu->drawdebug) {
-		//skriv ut fps etc
+		//print some infos (fps,gameframe,particles)
 		glColor4f(1,1,0.5f,0.8f);
-		font->glFormatAt(0.03f, 0.02f, 1.0f, "FPS %d Frame %d Part %d(%d)",
+		font->glFormat(0.03f, 0.02f, 1.0f, FONT_SCALE | FONT_NORM, "FPS: %d Frame: %d Particles: %d (%d)",
 		                 fps, gs->frameNum, ph->ps.size(), ph->currentParticles);
 
 		if (playing) {
-			font->glFormatAt(0.03f, 0.07f, 0.7f, "xpos: %5.0f ypos: %5.0f zpos: %5.0f speed %2.2f",
+			font->glFormat(0.03f, 0.07f, 0.7f, FONT_SCALE | FONT_NORM, "xpos: %5.0f ypos: %5.0f zpos: %5.0f speed %2.2f",
 			                 camera->pos.x, camera->pos.y, camera->pos.z, gs->speedFactor);
 		}
 	}
@@ -2928,90 +2940,88 @@ bool CGame::Draw() {
 
 	if (!hotBinding.empty()) {
 		glColor4f(1.0f, 0.3f, 0.3f, 1.0f);
-		font->glPrintCentered(0.5f, 0.6f, 3.0f, "Hit keyset for:");
+		font->glPrint(0.5f, 0.6f, 3.0f, FONT_SCALE | FONT_CENTER | FONT_NORM, "Hit keyset for:");
 		glColor4f(0.3f, 1.0f, 0.3f, 1.0f);
-		font->glPrintCentered(0.5f, 0.5f, 3.0f, "%s", hotBinding.c_str());
+		font->glFormat(0.5f, 0.5f, 3.0f, FONT_SCALE | FONT_CENTER | FONT_NORM, "%s", hotBinding.c_str());
 		glColor4f(0.3f, 0.3f, 1.0f, 1.0f);
-		font->glPrintCentered(0.5f, 0.4f, 3.0f, "(or Escape)");
+		font->glPrint(0.5f, 0.4f, 3.0f, FONT_SCALE | FONT_CENTER | FONT_NORM, "(or Escape)");
 	}
 
-	if (showClock && !hideInterface) {
-		char buf[32];
-		const int seconds = (gs->frameNum / 30);
-		if (seconds < 3600) {
-			SNPRINTF(buf, sizeof(buf), "%02i:%02i", seconds / 60, seconds % 60);
-		} else {
-			SNPRINTF(buf, sizeof(buf), "%02i:%02i:%02i", seconds / 3600,
-			                                 (seconds / 60) % 60, seconds % 60);
-		}
+	if (!hideInterface) {
+		smallFont->Begin();
 
-		const float fontScale = 1.0f;
+		int font_options = FONT_RIGHT | FONT_SCALE | FONT_NORM;
+		if (guihandler->GetOutlineFonts())
+			font_options |= FONT_OUTLINE;
 
-		glColor4f(1,1,1,1);
-		if (!guihandler->GetOutlineFonts()) {
-			smallFont->glPrintRight(0.99f, 0.94f, fontScale, buf);
-		} else {
-			const float white[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-			smallFont->glPrintOutlinedRight(0.99f, 0.94f, fontScale, buf, white);
-		}
-	}
-
-	if (showFPS && !hideInterface) {
-		char buf[32];
-		SNPRINTF(buf, sizeof(buf), "%i", fps);
-
-		const float fontScale = 1.0f;
-
-		if (!guihandler->GetOutlineFonts()) {
-			glColor4f(1.0f, 1.0f, 0.25f, 1.0f);
-			smallFont->glPrintRight(0.99f, 0.92f, fontScale, buf);
-		} else {
-			const float yellow[4] = { 1.0f, 1.0f, 0.25f, 1.0f };
-			smallFont->glPrintOutlinedRight(0.99f, 0.92f, fontScale, buf, yellow);
-		}
-	}
-
-	if (playerRoster.GetSortType() != PlayerRoster::Disabled) {
-		char buf[128];
-		const float fontScale = 1.0f;
-		int count;
-		const std::vector<int>& indices = playerRoster.GetIndices(&count);
-
-		for (int a = 0; a < count; ++a) {
-			const CPlayer* p = playerHandler->Player(indices[a]);
-			float color[4];
-			const char* prefix;
-			if (p->spectator) {
-				color[0] = 1.0f;
-				color[1] = 1.0f;
-				color[2] = 1.0f;
-				color[3] = 1.0f;
-				prefix = "S|";
+		if (showClock) {
+			char buf[32];
+			const int seconds = (gs->frameNum / 30);
+			if (seconds < 3600) {
+				SNPRINTF(buf, sizeof(buf), "%02i:%02i", seconds / 60, seconds % 60);
 			} else {
-				const unsigned char* bColor = teamHandler->Team(p->team)->color;
-				color[0] = (float)bColor[0] / 255.0f;
-				color[1] = (float)bColor[1] / 255.0f;
-				color[2] = (float)bColor[2] / 255.0f;
-				color[3] = (float)bColor[3] / 255.0f;
-				if (gu->myAllyTeam ==teamHandler->AllyTeam(p->team))
-					prefix = "A|";	// same AllyTeam
-				else if (teamHandler->AlliedTeams(gu->myTeam, p->team))
-					prefix = "E+|";	// different AllyTeams, but are allied
-				else
-					prefix = "E|";	//no alliance at all
+				SNPRINTF(buf, sizeof(buf), "%02i:%02i:%02i", seconds / 3600, (seconds / 60) % 60, seconds % 60);
 			}
-			SNPRINTF(buf, sizeof(buf), "%c%i:%s %s %3.0f%% Ping:%d ms",
-						(gu->spectating && !p->spectator && (gu->myTeam == p->team)) ? '-' : ' ',
-						p->team, prefix, p->name.c_str(), p->cpuUsage * 100.0f,
-						(int)(((p->ping) * 1000) / (GAME_SPEED * gs->speedFactor)));
 
-			if (!guihandler->GetOutlineFonts()) {
-				glColor4fv(color);
-				smallFont->glPrintAt(0.76f, 0.01f + (0.02f * (count - a - 1)), fontScale, buf);
-			} else {
-				smallFont->glPrintOutlinedAt(0.76f, 0.01f + (0.02f * (count - a - 1)), fontScale, buf, color);
+			smallFont->glPrint(0.99f, 0.94f, 1.0f, font_options, buf);
+		}
+
+
+		if (showFPS) {
+			char buf[32];
+			SNPRINTF(buf, sizeof(buf), "%i", fps);
+
+			const float4 yellow(1.0f, 1.0f, 0.25f, 1.0f);
+			smallFont->SetColors(&yellow,NULL);
+			smallFont->glPrint(0.99f, 0.92f, 1.0f, font_options, buf);
+		}
+
+
+		if (playerRoster.GetSortType() != PlayerRoster::Disabled) {
+			font_options ^= FONT_RIGHT;
+
+			char buf[128];
+			int count;
+			const std::vector<int>& indices = playerRoster.GetIndices(&count, true);
+
+			for (int a = 0; a < count; ++a) {
+				const CPlayer* p = playerHandler->Player(indices[a]);
+				float4 color(1.0f,1.0f,1.0f,1.0f);
+				std::string prefix;
+				if(p->ping != PATHING_FLAG || gs->frameNum != 0) {
+					prefix = "S|";
+					if (!p->spectator) {
+						const unsigned char* bColor = teamHandler->Team(p->team)->color;
+						color[0] = (float)bColor[0] / 255.0f;
+						color[1] = (float)bColor[1] / 255.0f;
+						color[2] = (float)bColor[2] / 255.0f;
+						color[3] = (float)bColor[3] / 255.0f;
+						if (gu->myAllyTeam == teamHandler->AllyTeam(p->team))
+							prefix = "A|";	// same AllyTeam
+						else if (teamHandler->AlliedTeams(gu->myTeam, p->team))
+							prefix = "E+|";	// different AllyTeams, but are allied
+						else
+							prefix = "E|";	//no alliance at all
+					}
+					SNPRINTF(buf, sizeof(buf), "%c%i:%s %s %3.0f%% Ping:%d ms",
+							(gu->spectating && !p->spectator && (gu->myTeam == p->team)) ? '-' : ' ',
+							p->team, prefix.c_str(), p->name.c_str(), p->cpuUsage * 100.0f,
+							(int)(((p->ping) * 1000) / (GAME_SPEED * gs->speedFactor)));
+				}
+				else {
+					prefix = " |";
+					SNPRINTF(buf, sizeof(buf), "%c%i:%s %s %s-%d Pathing: %d",
+							(gu->spectating && !p->spectator && (gu->myTeam == p->team)) ? '-' : ' ',
+							p->team, prefix.c_str(), p->name.c_str(), (((int)p->cpuUsage) & 0x1)?"PC":"BO",
+							((int)p->cpuUsage) & 0xFE, (((int)p->cpuUsage)>>8)*1000);
+				}
+				smallFont->SetColors(&color, NULL);
+				float x = 0.88f, y = 0.005f + (0.0125f * (count - a - 1));
+				smallFont->glPrint(x, y, 1.0f, font_options, buf);
 			}
 		}
+
+		smallFont->End();
 	}
 
 	mouse->DrawCursor();
@@ -3064,49 +3074,50 @@ void CGame::ParseInputTextGeometry(const string& geo)
 
 void CGame::DrawInputText()
 {
+	const float fontSale = 1.0f;                       // TODO: make configurable again
+	const float fontSize = fontSale * font->GetSize();
+
 	const string tempstring = userPrompt + userInput;
 
 	// draw the caret
 	const int caretPos = userPrompt.length() + writingPos;
 	const string caretStr = tempstring.substr(0, caretPos);
-	const float caretWidth = font->CalcTextWidth(caretStr.c_str());
+	const float caretWidth = fontSize * font->GetTextWidth(caretStr) * gu->pixelX;
 
 	char c = userInput[writingPos];
 	if (c == 0) { c = ' '; }
 
-	const float fontScale = 1.0f;		// TODO: make configurable again
-
-	const float cw = fontScale * font->CalcCharWidth(c);
-	const float csx = inputTextPosX + (fontScale * caretWidth);
+	const float cw = fontSize * font->GetCharacterWidth(c) * gu->pixelX;
+	const float csx = inputTextPosX + caretWidth;
 	glDisable(GL_TEXTURE_2D);
 	const float f = 0.5f * (1.0f + fastmath::sin((float)SDL_GetTicks() * 0.015f));
 	glColor4f(f, f, f, 0.75f);
-	glRectf(csx, inputTextPosY, csx + cw, inputTextPosY + font->GetHeight() * fontScale);
+	glRectf(csx, inputTextPosY, csx + cw, inputTextPosY + fontSize * font->GetLineHeight() * gu->pixelY);
 	glEnable(GL_TEXTURE_2D);
 
 	// setup the color
-	const float defColor[4]  = { 1.0f, 1.0f, 1.0f, 1.0f };
-	const float allyColor[4] = { 0.5f, 1.0f, 0.5f, 1.0f };
-	const float specColor[4] = { 1.0f, 1.0f, 0.5f, 1.0f };
-	const float* textColor = defColor;
+	static float4 const defColor(1.0f, 1.0f, 1.0f, 1.0f);
+	static float4 const allyColor(0.5f, 1.0f, 0.5f, 1.0f);
+	static float4 const specColor(1.0f, 1.0f, 0.5f, 1.0f);
+	const float4* textColor = &defColor;
 	if (userInput.length() < 2) {
-		textColor = defColor;
+		textColor = &defColor;
 	} else if ((userInput.find_first_of("aA") == 0) && (userInput[1] == ':')) {
-		textColor = allyColor;
+		textColor = &allyColor;
 	} else if ((userInput.find_first_of("sS") == 0) && (userInput[1] == ':')) {
-		textColor = specColor;
+		textColor = &specColor;
 	} else {
-		textColor = defColor;
+		textColor = &defColor;
 	}
 
 	// draw the text
 	if (!guihandler->GetOutlineFonts()) {
-		glColor4fv(textColor);
-		font->glPrintAt(inputTextPosX, inputTextPosY, fontScale, tempstring.c_str());
+		glColor4fv(*textColor);
+		font->glPrint(inputTextPosX, inputTextPosY, fontSize, FONT_DESCENDER | FONT_NORM, tempstring);
 	} else {
-		font->glPrintOutlinedAt(inputTextPosX, inputTextPosY, fontScale, tempstring.c_str(), textColor);
+		font->SetColors(textColor, NULL);
+		font->glPrint(inputTextPosX, inputTextPosY, fontSize, FONT_DESCENDER | FONT_OUTLINE | FONT_NORM, tempstring);
 	}
-	glLoadIdentity();
 }
 
 
@@ -3158,11 +3169,14 @@ void CGame::SimFrame() {
 		sound->NewFrame();
 		treeDrawer->Update();
 		eoh->Update();
+#ifndef USE_GML
+		ph->UpdateTextures();
+		sky->Update();
+#endif
 		for (size_t a = 0; a < grouphandlers.size(); a++) {
 			grouphandlers[a]->Update();
 		}
 		profiler.Update();
-		unitDrawer->Update();
 #ifdef DIRECT_CONTROL_ALLOWED
 		if (gu->directControl) {
 			unsigned char status = 0;
@@ -3209,6 +3223,8 @@ void CGame::SimFrame() {
 
 	teamHandler->GameFrame(gs->frameNum);
 	playerHandler->GameFrame(gs->frameNum);
+
+	ph->AddRenderObjects(); // delayed addition of new rendering objects, to make sure they will be drawn next draw frame
 
 	lastUpdate = SDL_GetTicks();
 }
@@ -3382,8 +3398,7 @@ void CGame::ClientReadNet()
 
 			case NETMSG_INTERNAL_SPEED: {
 				gs->speedFactor = *((float*) &inbuf[1]);
-				if (configHandler->Get("PitchAdjust", true))
-					sound->PitchAdjust(sqrt(gs->speedFactor));
+				sound->PitchAdjust(sqrt(gs->speedFactor));
 				//	logOutput.Print("Internal speed set to %.2f",gs->speedFactor);
 				AddTraffic(-1, packetCode, dataLength);
 				break;
@@ -3768,7 +3783,10 @@ void CGame::ClientReadNet()
 
 				unsigned numPlayersInTeam = 0;
 				for (int a = 0; a < playerHandler->ActivePlayers(); ++a) {
-					if (playerHandler->Player(a)->active && (playerHandler->Player(a)->team == fromTeam)) {
+					CPlayer* playah = playerHandler->Player(a);
+
+					// do not count spectators or demos will desync
+					if (playah->active && !playah->spectator && playah->team == fromTeam) {
 						++numPlayersInTeam;
 					}
 				}
@@ -3777,6 +3795,7 @@ void CGame::ClientReadNet()
 				{
 					case TEAMMSG_GIVEAWAY: {
 						const int toTeam = inbuf[3];
+
 						if (numPlayersInTeam == 1) {
 							teamHandler->Team(fromTeam)->GiveEverythingTo(toTeam);
 							teamHandler->Team(fromTeam)->leader = -1;
@@ -3996,13 +4015,16 @@ void CGame::UpdateUI(bool cam)
 			+ owner->updir    * relPos.y
 			+ owner->rightdir * relPos.x;
 		pos += UpVector * 7;
-		//camHandler->GetCurrentController().SetPos(pos); // in case of multithreading, avoid setting the cam from sim thread
+
 		GML_STDMUTEX_LOCK(pos); // UpdateUI
+
 		lastDCpos=pos;
 		plastDCpos=&lastDCpos;
 	}
 	if (plastDCpos && cam) {
+
 		GML_STDMUTEX_LOCK(pos); // UpdateUI
+
 		if(plastDCpos) {
 			camHandler->GetCurrentController().SetPos(*plastDCpos);
 			plastDCpos=NULL;
@@ -4234,10 +4256,10 @@ void CGame::DrawDirectControlHud(void)
 		glEnable(GL_TEXTURE_2D);
 
 		glColor4f(0.2f, 0.8f, 0.2f, 0.8f);
-		font->glFormatAt(0.02f, 0.65f, 1.0f, "Health %.0f / %.0f", (float)unit->health, (float)unit->maxHealth);
+		font->glFormat(0.02f, 0.65f, 1.0f, FONT_SCALE | FONT_NORM, "Health %.0f / %.0f", (float)unit->health, (float)unit->maxHealth);
 
 		if(playerHandler->Player(gu->myPlayerNum)->myControl.mouse2){
-			font->glPrintAt(0.02f, 0.7f, 1.0f, "Free fire mode");
+			font->glPrint(0.02f, 0.7f, 1.0f, FONT_SCALE | FONT_NORM, "Free fire mode");
 		}
 
 		int numWeaponsToPrint = 0;
@@ -4265,24 +4287,24 @@ void CGame::DrawDirectControlHud(void)
 					if (wd->stockpile && !w->numStockpiled) {
 						if (w->numStockpileQued) {
 							glColor4f(0.8f, 0.2f, 0.2f, 0.8f);
-							font->glFormatAt(0.02f, yPos, fontSize, "%s:  Stockpiling %i%%", wd->description.c_str(), int(100.0f * w->buildPercent + 0.5f));
+							font->glFormat(0.02f, yPos, fontSize, FONT_SCALE | FONT_NORM, "%s:  Stockpiling %i%%", wd->description.c_str(), int(100.0f * w->buildPercent + 0.5f));
 						}
 						else {
 							glColor4f(0.8f, 0.2f, 0.2f, 0.8f);
-							font->glFormatAt(0.02f, yPos, fontSize, "%s:  No ammo", wd->description.c_str());
+							font->glFormat(0.02f, yPos, fontSize, FONT_SCALE | FONT_NORM, "%s:  No ammo", wd->description.c_str());
 						}
 					}
 					else if (w->reloadStatus > gs->frameNum) {
 						glColor4f(0.8f, 0.2f, 0.2f, 0.8f);
-						font->glFormatAt(0.02f, yPos, fontSize, "%s:  Reloading %i%%", wd->description.c_str(), 100 - int(100.0f * (w->reloadStatus - gs->frameNum) / int(w->reloadTime / unit->reloadSpeed) + 0.5f));
+						font->glFormat(0.02f, yPos, fontSize, FONT_SCALE | FONT_NORM, "%s:  Reloading %i%%", wd->description.c_str(), 100 - int(100.0f * (w->reloadStatus - gs->frameNum) / int(w->reloadTime / unit->reloadSpeed) + 0.5f));
 					}
 					else if (!w->angleGood) {
 						glColor4f(0.6f, 0.6f, 0.2f, 0.8f);
-						font->glFormatAt(0.02f, yPos, fontSize, "%s:  Aiming", wd->description.c_str());
+						font->glFormat(0.02f, yPos, fontSize, FONT_SCALE | FONT_NORM, "%s:  Aiming", wd->description.c_str());
 					}
 					else {
 						glColor4f(0.2f, 0.8f, 0.2f, 0.8f);
-						font->glFormatAt(0.02f, yPos, fontSize, "%s:  Ready", wd->description.c_str());
+						font->glFormat(0.02f, yPos, fontSize, FONT_SCALE | FONT_NORM, "%s:  Ready", wd->description.c_str());
 					}
 				}
 			}
@@ -4553,11 +4575,9 @@ void CGame::Skip(int toFrame)
 				glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 				glClear(GL_COLOR_BUFFER_BIT);
 				glColor3f(0.5f, 1.0f, 0.5f);
-				font->glPrintCentered(0.5f, 0.55f, 2.5f,
-					"Skipping %.1f game seconds", seconds);
+				font->glFormat(0.5f, 0.55f, 2.5f, FONT_CENTER | FONT_SCALE | FONT_NORM, "Skipping %.1f game seconds", seconds);
 				glColor3f(1.0f, 1.0f, 1.0f);
-				font->glPrintCentered(0.5f, 0.45f, 2.0f,
-					"(%i frames left)", framesLeft);
+				font->glFormat(0.5f, 0.45f, 2.0f, FONT_CENTER | FONT_SCALE | FONT_NORM, "(%i frames left)", framesLeft);
 
 				const float ff = (float)framesLeft / (float)totalFrames;
 				glDisable(GL_TEXTURE_2D);

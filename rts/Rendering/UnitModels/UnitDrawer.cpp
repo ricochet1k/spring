@@ -20,6 +20,7 @@
 #include "Rendering/Env/BaseWater.h"
 #include "Rendering/FartextureHandler.h"
 #include "Rendering/glFont.h"
+#include "Rendering/GL/glExtra.h"
 #include "Rendering/GL/VertexArray.h"
 #include "Rendering/GroundDecalHandler.h"
 #include "Rendering/IconHandler.h"
@@ -104,13 +105,23 @@ CUnitDrawer::CUnitDrawer(void)
 	float3 specularSunColor = mapInfo->light.specularSunColor;
 	advShading = !!configHandler->Get("AdvUnitShading", GLEW_ARB_fragment_program ? 1: 0);
 
+	cloakAlpha = std::max(0.11f, std::min(1.0f, 1.0f - configHandler->Get("UnitTransparency", 0.7f)));
+
 	if (advShading && !GLEW_ARB_fragment_program) {
 		logOutput.Print("You are missing an OpenGL extension needed to use advanced unit shading (GL_ARB_fragment_program)");
 		advShading = false;
 	}
 
+	advFade = false;
+
 	if (advShading) {
-		unitVP = LoadVertexProgram("units3o.vp");
+		if(GLEW_NV_vertex_program2) {
+			unitVP = LoadVertexProgram("units3o2.vp");
+			advFade = true;
+		}
+		else {
+			unitVP = LoadVertexProgram("units3o.vp");
+		}
 		unitFP = LoadFragmentProgram("units3o.fp");
 
 		if (shadowHandler->canUseShadows) {
@@ -212,16 +223,18 @@ void CUnitDrawer::SetUnitIconDist(float dist)
 
 void CUnitDrawer::Update(void)
 {
-	GML_STDMUTEX_LOCK(temp); //unit); // Update
+	{
+		GML_STDMUTEX_LOCK(temp); // Update
 
-	while (!tempDrawUnits.empty() && tempDrawUnits.begin()->first < gs->frameNum - 1) {
-		tempDrawUnits.erase(tempDrawUnits.begin());
-	}
-	while (!tempTransparentDrawUnits.empty() && tempTransparentDrawUnits.begin()->first <= gs->frameNum) {
-		tempTransparentDrawUnits.erase(tempTransparentDrawUnits.begin());
+		while (!tempDrawUnits.empty() && tempDrawUnits.begin()->first < gs->frameNum - 1) {
+			tempDrawUnits.erase(tempDrawUnits.begin());
+		}
+		while (!tempTransparentDrawUnits.empty() && tempTransparentDrawUnits.begin()->first <= gs->frameNum) {
+			tempTransparentDrawUnits.erase(tempTransparentDrawUnits.begin());
+		}
 	}
 
-	GML_STDMUTEX_LOCK(render);
+	GML_STDMUTEX_LOCK(render); // Update
 
 	for(std::set<CUnit *>::iterator ui=uh->toBeAdded.begin(); ui!=uh->toBeAdded.end(); ++ui)
 		uh->renderUnits.push_back(*ui);
@@ -362,7 +375,12 @@ inline void CUnitDrawer::DoDrawUnit(CUnit *unit, bool drawReflection, bool drawR
 				float realIconLength = iconLength * (iconDistMult * iconDistMult);
 
 				if (sqDist < realIconLength) {
-					if (unit->model->type==MODELTYPE_S3O) {
+					S3DModel* model = unit->model;
+					if (unit->unitDef->decoyDef) {
+						model = unit->unitDef->decoyDef->LoadModel();
+					}
+
+					if (model->type==MODELTYPE_S3O) {
 						drawCloakedS3O.push_back(unit);
 					} else {
 						drawCloaked.push_back(unit);
@@ -426,8 +444,9 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 	#endif
 		gmlProcessor->Work(NULL,NULL,&CUnitDrawer::DoDrawUnitMT,this,gmlThreadCount,FALSE,&uh->renderUnits,uh->renderUnits.size(),50,100,TRUE);
 	}
-	else {
+	else
 #endif
+	{
 		for (std::list<CUnit*>::iterator usi = uh->renderUnits.begin(); usi != uh->renderUnits.end(); ++usi) {
 			CUnit* unit = *usi;
 			DoDrawUnit(unit,drawReflection,drawRefraction,
@@ -438,9 +457,7 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 		#endif
 								);
 		}
-#ifdef USE_GML
 	}
-#endif
 
 	{
 		//FIXME: s3o's + teamcolor
@@ -500,6 +517,7 @@ void CUnitDrawer::Draw(bool drawReflection, bool drawRefraction)
 			DrawIcon(*ui, true);
 		}
 		glDisable(GL_TEXTURE_2D);
+		glDisable(GL_ALPHA_TEST);
 		for (ui = drawStat.begin(); ui != drawStat.end(); ++ui) {
 			DrawUnitStats(*ui);
 		}
@@ -775,7 +793,7 @@ void CUnitDrawer::DrawIcon(CUnit * unit, bool asRadarBlip)
 	} else {
 		pos = helper->GetUnitErrorPos(unit, gu->myAllyTeam);
 	}
-	float dist = fastmath::sqrt2((pos - camera->pos).Length());
+	float dist = fastmath::sqrt2(fastmath::sqrt2((pos - camera->pos).SqLength()));
 	float scale = 0.4f * iconData->GetSize() * dist;
 	if (iconData->GetRadiusAdjust() && !asRadarBlip) {
 		// I take the standard unit radius to be 30
@@ -823,6 +841,14 @@ void CUnitDrawer::SetupForGhostDrawing() const
 	glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA_ARB, GL_PRIMARY_COLOR_ARB);
 
 	glActiveTextureARB(GL_TEXTURE0_ARB);
+	glEnable(GL_TEXTURE_2D);
+
+	glPushAttrib(GL_COLOR_BUFFER_BIT || GL_DEPTH_BUFFER_BIT);	
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_ALPHA_TEST);
+	glAlphaFunc(GL_GREATER, 0.1f);
+	glDepthMask(GL_FALSE);
 }
 
 
@@ -830,8 +856,6 @@ void CUnitDrawer::CleanUpGhostDrawing() const
 {
 	glPopAttrib();
 	glDisable(GL_TEXTURE_2D);
-	glDepthMask(1);
-	glDisable(GL_ALPHA_TEST);
 
 	// clean up s3o drawing stuff
 	// reset texture1 state
@@ -846,25 +870,20 @@ void CUnitDrawer::CleanUpGhostDrawing() const
 }
 
 
-void CUnitDrawer::DrawCloakedUnits(void)
+void CUnitDrawer::DrawCloakedUnits(bool submerged)
 {
 	GML_RECMUTEX_LOCK(unit); // DrawCloakedUnits
 
 	SetupForGhostDrawing();
 	SetupFor3DO();
 
-	glEnable(GL_TEXTURE_2D);
-	glDisable(GL_CULL_FACE);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glAlphaFunc(GL_GREATER, 0.1f);
-	glEnable(GL_ALPHA_TEST);
-	glColor4f(1, 1, 1, 0.3f);
-	glDepthMask(0);
+	double plane[4]={0,submerged?-1:1,0,0};
+	glClipPlane(GL_CLIP_PLANE3, plane);
+
+	glColor4f(1, 1, 1, cloakAlpha);
 
 	{
 		//FIXME: doesn't support s3o's nor does it set teamcolor
-
 		GML_STDMUTEX_LOCK(temp); // DrawCloakedUnits
 		// units drawn by AI, these aren't really
 		// cloaked but the effect is the same
@@ -1134,11 +1153,11 @@ void CUnitDrawer::CleanUpUnitDrawing(void) const
 }
 
 
-void CUnitDrawer::SetTeamColour(int team) const
+void CUnitDrawer::SetTeamColour(int team, float alpha) const
 {
 	if (advShading) {
 		unsigned char* col = teamHandler->Team(team)->color;
-		glProgramEnvParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 14, col[0] / 255.f, col[1] / 255.f, col[2] / 255.f, 1);
+		glProgramEnvParameter4fARB(GL_FRAGMENT_PROGRAM_ARB, 14, col[0] / 255.f, col[1] / 255.f, col[2] / 255.f, alpha);
 		if (luaDrawing) { // FIXME?
 			SetBasicTeamColour(team);
 		}
@@ -1559,7 +1578,7 @@ void CUnitDrawer::DrawBuildingSample(const UnitDef* unitdef, int side, float3 po
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 
 	/* From SetupForGhostDrawing. */
-	glDepthMask(0);
+	glDepthMask(GL_FALSE);
 	glDisable(GL_CULL_FACE); /* Leave out face culling, as 3DO and 3DO translucents does. */
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
@@ -1585,7 +1604,7 @@ void CUnitDrawer::DrawBuildingSample(const UnitDef* unitdef, int side, float3 po
 	/* From CleanUpGhostDrawing. */
 	glPopAttrib();
 	glDisable(GL_TEXTURE_2D);
-	glDepthMask(1);
+	glDepthMask(GL_TRUE);
 }
 
 
@@ -1725,6 +1744,8 @@ inline void CUnitDrawer::DrawUnitDebug(CUnit* unit)
 
 			UnitDrawingTexturesOff(NULL);
 
+			const int  deltaTime  = gs->frameNum - unit->lastAttack;
+			const bool markVolume = (unit->lastAttack > 0 && deltaTime < 150);
 			const float3 midPosOffset =
 				(unit->frontdir * unit->relMidPos.z) +
 				(unit->updir    * unit->relMidPos.y) +
@@ -1749,7 +1770,17 @@ inline void CUnitDrawer::DrawUnitDebug(CUnit* unit)
 					DrawUnitDebugPieceTree(unit->localmodel->pieces[0], unit->lastAttackedPiece, mat, q);
 				} else {
 					if (!unit->collisionVolume->IsDisabled()) {
+						if (markVolume) {
+							glLineWidth(2.0f);
+							glColor3f(1.0f - (deltaTime / 150.0f), 0.0f, 0.0f);
+						}
+
 						DrawCollisionVolume(unit->collisionVolume, q);
+
+						if (markVolume) {
+							glLineWidth(1.0f);
+							glColor3f(0.0f, 0.0f, 0.0f);
+						}
 					}
 				}
 
@@ -1879,8 +1910,9 @@ void CUnitDrawer::DrawUnitNow(CUnit* unit)
 	} else {
 		DrawUnitBeingBuilt(unit);
 	}
-
+#ifndef USE_GML
 	DrawUnitDebug(unit);
+#endif
 	glPopMatrix();
 
 	if (unit->alphaThreshold != 0.1f) {
@@ -1908,7 +1940,9 @@ void CUnitDrawer::DrawUnitWithLists(CUnit* unit, unsigned int preList, unsigned 
 		glCallList(postList);
 	}
 
+#ifndef USE_GML
 	DrawUnitDebug(unit);
+#endif
 	glPopMatrix();
 }
 
@@ -1959,34 +1993,34 @@ void CUnitDrawer::DrawUnitStats(CUnit* unit)
 	}
 
 	float3 interPos = unit->drawPos;
-
 	interPos.y += unit->model->height + 5.0f;
 
 	// setup the billboard transformation
 	glPushMatrix();
 	glTranslatef(interPos.x, interPos.y, interPos.z);
-	// glMultMatrixd(camera->billboard);
 	glCallList(CCamera::billboardList);
 
-	// black background for healthbar
-	glColor3f(0.0f, 0.0f, 0.0f);
-	glRectf(-5.0f, 4.0f, +5.0f, 6.0f);
+	if (unit->health < unit->maxHealth) {
+		// black background for healthbar
+		glColor3f(0.0f, 0.0f, 0.0f);
+		glRectf(-5.0f, 4.0f, +5.0f, 6.0f);
 
-	// healthbar
-	const float hpp = std::max(0.0f, unit->health / unit->maxHealth);
-	const float hEnd = hpp * 10.0f;
+		// healthbar
+		const float hpp = std::max(0.0f, unit->health / unit->maxHealth);
+		const float hEnd = hpp * 10.0f;
 
-	if (unit->stunned) {
-		glColor3f(0.0f, 0.0f, 1.0f);
-	} else {
-		if (hpp > 0.5f) {
-			glColor3f(1.0f - ((hpp - 0.5f) * 2.0f), 1.0f, 0.0f);
+		if (unit->stunned) {
+			glColor3f(0.0f, 0.0f, 1.0f);
 		} else {
-			glColor3f(1.0f, hpp * 2.0f, 0.0f);
+			if (hpp > 0.5f) {
+				glColor3f(1.0f - ((hpp - 0.5f) * 2.0f), 1.0f, 0.0f);
+			} else {
+				glColor3f(1.0f, hpp * 2.0f, 0.0f);
+			}
 		}
-	}
 
-	glRectf(-5.0f, 4.0f, hEnd - 5.0f, 6.0f);
+		glRectf(-5.0f, 4.0f, hEnd - 5.0f, 6.0f);
+	}
 
 	// stun level
 	if (!unit->stunned && (unit->paralyzeDamage > 0.0f)) {
@@ -2018,13 +2052,8 @@ void CUnitDrawer::DrawUnitStats(CUnit* unit)
 	}
 
 	if (unit->group) {
-		const float fontScale = 10.0f / font->GetHeight();
-		char buf[16];
-		sprintf(buf, "%i", unit->group->id);
-		const float width = fontScale  * font->CalcTextWidth(buf);
-
-		glColor3f(1.0f, 1.0f, 1.0f);
-		font->glPrintAt(-7.0f - width, 0.0f, fontScale, buf);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		font->glFormat(8.0f, 0.0f, 10.0f, FONT_BASELINE, "%i", unit->group->id);
 	}
 
 	glPopMatrix();
@@ -2042,7 +2071,7 @@ void CUnitDrawer::DrawFeatureStatic(CFeature* feature)
 	glPushMatrix();
 	glMultMatrixf(feature->transMatrix.m);
 
-	SetTeamColour(feature->team);
+	SetTeamColour(feature->team, feature->tempalpha);
 
 	feature->model->DrawStatic();
 	glPopMatrix();

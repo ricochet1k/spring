@@ -1,9 +1,9 @@
 #include "SoundSource.h"
 
+#include <climits>
 #include <AL/alc.h>
 #include <SDL_timer.h>
 
-#include "Sound.h"
 #include "SoundBuffer.h"
 #include "SoundItem.h"
 #include "ALShared.h"
@@ -11,13 +11,20 @@
 #include "LogOutput.h"
 
 float SoundSource::globalPitch = 1.0;
-
+float SoundSource::heightAdjustedRolloffModifier = 1.0;
 
 SoundSource::SoundSource() : curPlaying(0)
 {
 	alGenSources(1, &id);
-	alSourcef(id, AL_REFERENCE_DISTANCE, 50.0f);
-	CheckError("SoundSource::SoundSource");
+	if (!CheckError("SoundSource::SoundSource"))
+	{
+		id = 0;
+	}
+	else
+	{
+		alSourcef(id, AL_REFERENCE_DISTANCE, 200.0f);
+		CheckError("SoundSource::SoundSource");
+	}
 }
 
 SoundSource::~SoundSource()
@@ -34,7 +41,10 @@ void SoundSource::Update()
 
 int SoundSource::GetCurrentPriority() const
 {
-	assert(curPlaying);
+	if (!curPlaying) {
+		logOutput.Print("Warning: SoundSource::GetCurrentPriority() curPlaying is NULL (id %d)", id);
+		return INT_MIN;
+	}
 	return curPlaying->priority;
 }
 
@@ -71,7 +81,6 @@ void SoundSource::Play(SoundItem* item, const float3& pos, float3 velocity, floa
 	alSourcei(id, AL_BUFFER, item->buffer->GetId());
 	alSourcef(id, AL_GAIN, item->gain * volume);
 	alSourcef(id, AL_PITCH, item->pitch * globalPitch);
-	alSource3f(id, AL_POSITION, pos.x, pos.y, pos.z);
 	velocity *= item->dopplerScale;
 	alSource3f(id, AL_VELOCITY, velocity.x, velocity.y, velocity.z);
 	if (item->loopTime > 0)
@@ -80,16 +89,18 @@ void SoundSource::Play(SoundItem* item, const float3& pos, float3 velocity, floa
 		alSourcei(id, AL_LOOPING, AL_FALSE);
 	loopStop = SDL_GetTicks() + item->loopTime;
 	if (relative || !item->in3D)
+	{
 		alSourcei(id, AL_SOURCE_RELATIVE, AL_TRUE);
+		alSource3f(id, AL_POSITION, 0.0, 0.0, -1.0);
+	}
 	else
+	{
 		alSourcei(id, AL_SOURCE_RELATIVE, AL_FALSE);
+		alSource3f(id, AL_POSITION, pos.x, pos.y, pos.z);
+		alSourcef(id, AL_ROLLOFF_FACTOR, item->rolloff * heightAdjustedRolloffModifier);
+	}
 	alSourcePlay(id);
-#ifdef DEBUG
-	//LogObject(LOG_SOUND) << "Playing: " << item->name;
-	//LogObject(LOG_SOUND) << "# Pitch: " << item->pitch * globalPitch << "  Vol: " << item->gain * volume;
-	//LogObject(LOG_SOUND) << "# Pos: " << pos.x << ", " << pos.y << ", " << pos.z;
-	//LogObject(LOG_SOUND) << "# Vel: " << velocity.x << ", " << velocity.y << ", " << velocity.z;
-#endif
+
 	if (item->buffer->GetId() == 0)
 		logOutput.Print("SoundSource::Play: Empty buffer for item %s (file %s)", item->name.c_str(), item->buffer->GetFilename().c_str());
 	CheckError("SoundSource::Play");

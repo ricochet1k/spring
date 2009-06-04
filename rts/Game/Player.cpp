@@ -28,17 +28,19 @@
 CR_BIND(CPlayer,);
 
 CR_REG_METADATA(CPlayer, (
-				CR_MEMBER(active),
 				CR_MEMBER(name),
 				CR_MEMBER(countryCode),
 				CR_MEMBER(rank),
 				CR_MEMBER(spectator),
 				CR_MEMBER(team),
+
+				CR_MEMBER(active),
+				CR_MEMBER(playerNum),
 //				CR_MEMBER(readyToStart),
 //				CR_MEMBER(cpuUsage),
 //				CR_MEMBER(ping),
 //				CR_MEMBER(currentStats),
-				CR_MEMBER(playerNum),
+
 //				CR_MEMBER(controlledTeams),
 				CR_RESERVED(32)
 				));
@@ -101,9 +103,10 @@ void CPlayer::SetControlledTeams()
 	// AI teams
 	for (int t = 0; t < teamHandler->ActiveTeams(); t++) {
 		const CTeam* team = teamHandler->Team(t);
-		if (team && team->isAI &&
-			!team->skirmishAIKey.IsUnspecified() && // is not empty? -> luaAI does not require client control
-			(team->leader == playerNum)) {
+
+		// don't check if !team->skirmishAIKey.IsUnspecified()
+		// because luaAI does not require client control
+		if (team && team->isAI && (team->leader == playerNum)) {
 			controlledTeams.insert(t);
 		}
 	}

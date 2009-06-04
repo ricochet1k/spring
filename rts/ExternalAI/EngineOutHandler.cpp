@@ -17,6 +17,7 @@
 
 #include "EngineOutHandler.h"
 #include "SkirmishAIWrapper.h"
+#include "Interface/AISCommands.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Game/GameHelper.h"
 #include "Game/Player.h"
@@ -32,10 +33,11 @@
 #include "TimeProfiler.h"
 
 
-CR_BIND_DERIVED(CEngineOutHandler,CObject,)
+CR_BIND_DERIVED(CEngineOutHandler,CObject, )
 
 CR_REG_METADATA(CEngineOutHandler, (
-				CR_MEMBER(skirmishAIs)
+				CR_MEMBER(skirmishAIs),
+				CR_MEMBER(hasSkirmishAIs)
 				));
 
 /////////////////////////////
@@ -118,7 +120,7 @@ void CEngineOutHandler::Destroy() {
 CEngineOutHandler::CEngineOutHandler()
 		: activeTeams(teamHandler->ActiveTeams()) {
 
-	for (int t=0; t < MAX_TEAMS; ++t) {
+	for (int t=0; t < skirmishAIs_size; ++t) {
 		skirmishAIs[t] = NULL;
 	}
 	hasSkirmishAIs = false;
@@ -126,7 +128,7 @@ CEngineOutHandler::CEngineOutHandler()
 
 CEngineOutHandler::~CEngineOutHandler() {
 
-	for (int t=0; t < MAX_TEAMS; ++t) {
+	for (int t=0; t < skirmishAIs_size; ++t) {
 		delete skirmishAIs[t];
 		skirmishAIs[t] = NULL;
 	}
@@ -246,12 +248,13 @@ void CEngineOutHandler::UnitIdle(const CUnit& unit) {
 	DO_FOR_TEAM_SKIRMISH_AND_GROUP_AIS(UnitIdle(unitId), teamId);
 }
 
-void CEngineOutHandler::UnitCreated(const CUnit& unit) {
+void CEngineOutHandler::UnitCreated(const CUnit& unit, const CUnit* builder) {
 
-	int teamId = unit.team;
-	int unitId = unit.id;
+	int teamId    = unit.team;
+	int unitId    = unit.id;
+	int builderId = builder? builder->id: -1;
 
-	DO_FOR_TEAM_SKIRMISH_AND_GROUP_AIS(UnitCreated(unitId), teamId);
+	DO_FOR_TEAM_SKIRMISH_AND_GROUP_AIS(UnitCreated(unitId, builderId), teamId);
 }
 
 void CEngineOutHandler::UnitFinished(const CUnit& unit) {
@@ -382,11 +385,12 @@ void CEngineOutHandler::PlayerCommandGiven(
 	DO_FOR_TEAM_SKIRMISH_AND_GROUP_AIS(PlayerCommandGiven(selectedUnitIds, c, playerId), teamId);
 }
 
-void CEngineOutHandler::CommandFinished(const CUnit& unit, int commandTopicId) {
+void CEngineOutHandler::CommandFinished(const CUnit& unit, const Command& command) {
 
 	int teamId = unit.team;
 	int unitId = unit.id;
-	DO_FOR_TEAM_SKIRMISH_AND_GROUP_AIS(CommandFinished(unitId, commandTopicId), teamId);
+	int aiCommandTopicId = extractAICommandTopic(&command);
+	DO_FOR_TEAM_SKIRMISH_AND_GROUP_AIS(CommandFinished(unitId, aiCommandTopicId), teamId);
 }
 
 void CEngineOutHandler::GotChatMsg(const char* msg, int fromPlayerId) {

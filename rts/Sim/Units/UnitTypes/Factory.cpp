@@ -22,6 +22,7 @@
 #include "Sim/Units/CommandAI/MobileCAI.h"
 #include "Sim/Units/UnitHandler.h"
 #include "Sim/Units/UnitLoader.h"
+#include "Sim/Units/UnitDefHandler.h"
 #include "Sync/SyncTracer.h"
 #include "GlobalUnsynced.h"
 #include "EventHandler.h"
@@ -36,7 +37,8 @@ CR_BIND_DERIVED(CFactory, CBuilding, );
 CR_REG_METADATA(CFactory, (
 				CR_MEMBER(buildSpeed),
 				CR_MEMBER(quedBuild),
-				CR_MEMBER(nextBuild),
+				//CR_MEMBER(nextBuild),
+				CR_MEMBER(nextBuildName),
 				CR_MEMBER(curBuild),
 				CR_MEMBER(opening),
 				CR_MEMBER(lastBuild),
@@ -48,12 +50,13 @@ CR_REG_METADATA(CFactory, (
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-CFactory::CFactory()
-:	buildSpeed(100),
-	curBuild(0),
+CFactory::CFactory():
+	buildSpeed(100),
 	quedBuild(false),
-	lastBuild(-1000),
-	opening(false)
+	nextBuild(0),
+	curBuild(0),
+	opening(false),
+	lastBuild(-1000)
 {
 }
 
@@ -62,14 +65,15 @@ CFactory::~CFactory()
 {
 	// if uh == NULL then all pointers to units should be considered dangling pointers
 	if (uh && curBuild) {
-		curBuild->KillUnit(false, true, 0);
-		curBuild = 0;
+		curBuild->KillUnit(false, true, NULL);
+		curBuild = NULL;
 	}
 }
 
 
 void CFactory::PostLoad()
 {
+	nextBuild = unitDefHandler->GetUnitByName(nextBuildName);
 	if(opening){
 		cob->Call(COBFN_Activate);
 	}
@@ -162,7 +166,7 @@ void CFactory::Update()
 
 			// buildPiece is the rotating platform
 			const int buildPiece = GetBuildPiece();
-			CMatrix44f mat = cob->GetPieceMatrix(buildPiece);
+			const CMatrix44f& mat = cob->GetPieceMatrix(buildPiece);
 			const int h = GetHeadingFromVector(mat[2], mat[10]);
 
 			// rotate unit nanoframe with platform
@@ -172,8 +176,9 @@ void CFactory::Update()
 			curBuild->pos = buildPos;
 
 			if (curBuild->floatOnWater) {
-				curBuild->pos.y  = ground->GetHeight(buildPos.x, buildPos.z);
-				curBuild->pos.y -= curBuild->unitDef->waterline;
+				float waterline = ground->GetHeight(buildPos.x, buildPos.z) - curBuild->unitDef->waterline;
+				if (waterline > curBuild->pos.y)
+					curBuild->pos.y = waterline;
 			}
 			curBuild->midPos = curBuild->pos + (UpVector * curBuild->relMidPos.y);
 
@@ -242,8 +247,7 @@ void CFactory::Update()
 	CBuilding::Update();
 }
 
-
-void CFactory::StartBuild(string type)
+void CFactory::StartBuild(const UnitDef* ud)
 {
 	if (beingBuilt)
 		return;
@@ -255,9 +259,9 @@ void CFactory::StartBuild(string type)
 
 	if (curBuild)
 		StopBuild();
-
 	quedBuild = true;
-	nextBuild = type;
+	nextBuild = ud;
+	nextBuildName = ud->name;
 
 	if (!opening && !stunned) {
 		cob->Call(COBFN_Activate);
@@ -334,33 +338,28 @@ bool CFactory::ChangeTeam(int newTeam, ChangeType type)
 
 void CFactory::CreateNanoParticle(void)
 {
-	if (ph->currentParticles >= ph->maxParticles)
-		return;
+	std::vector<int> args(1, 0);
+	cob->Call("QueryNanoPiece", args);
+
 #ifdef USE_GML
 	if (gs->frameNum - lastDrawFrame > 20)
 		return;
 #endif
-	if (!unitDef->showNanoSpray)
-		return;
-
-	std::vector<int> args;
-	args.push_back(0);
-	cob->Call("QueryNanoPiece", args);
-
-	const float3 relWeaponFirePos = cob->GetPiecePos(args[0]);
-	const float3 weaponPos = pos + (frontdir * relWeaponFirePos.z)
-		+ (updir    * relWeaponFirePos.y)
-		+ (rightdir * relWeaponFirePos.x);
-	float3 dif = (curBuild->midPos - weaponPos);
-	const float l = fastmath::sqrt2(dif.SqLength());
-	dif /= l;
-	dif += gu->usRandVector() * 0.15f;
-	float3 color = unitDef->nanoColor;
-
-	if (gu->teamNanospray) {
-		unsigned char* tcol = teamHandler->Team(team)->color;
-		color = float3(tcol[0] * (1.0f / 255.0f), tcol[1] * (1.0f / 255.0f), tcol[2] * (1.0f / 255.0f));
+	if (ph->currentNanoParticles < ph->maxNanoParticles && unitDef->showNanoSpray) {
+		const float3 relWeaponFirePos = cob->GetPiecePos(args[0]);
+		const float3 weaponPos = pos + (frontdir * relWeaponFirePos.z)
+			+ (updir    * relWeaponFirePos.y)
+			+ (rightdir * relWeaponFirePos.x);
+		float3 dif = (curBuild->midPos - weaponPos);
+		const float l = fastmath::sqrt2(dif.SqLength());
+		dif /= l;
+		dif += gu->usRandVector() * 0.15f;
+		float3 color = unitDef->nanoColor;
+	
+		if (gu->teamNanospray) {
+			unsigned char* tcol = teamHandler->Team(team)->color;
+			color = float3(tcol[0] * (1.0f / 255.0f), tcol[1] * (1.0f / 255.0f), tcol[2] * (1.0f / 255.0f));
+		}
+		new CGfxProjectile(weaponPos, dif, (int) l, color);
 	}
-
-	new CGfxProjectile(weaponPos, dif, (int) l, color);
 }

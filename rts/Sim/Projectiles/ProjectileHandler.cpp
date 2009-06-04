@@ -59,6 +59,12 @@ CR_REG_METADATA(CProjectileHandler, (
 	CR_POSTLOAD(PostLoad)
 ));
 
+bool distcmp::operator() (CProjectile *arg1, CProjectile *arg2) {
+	if(arg1->tempdist == arg2->tempdist) // strict ordering required
+		return arg1 > arg2;
+	return arg1->tempdist > arg2->tempdist;
+}
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -67,11 +73,14 @@ CProjectileHandler::CProjectileHandler()
 {
 	PrintLoadMsg("Creating projectile texture");
 
-	maxParticles = configHandler->Get("MaxParticles",4000);
+	maxParticles     = configHandler->Get("MaxParticles",      4000);
+	maxNanoParticles = configHandler->Get("MaxNanoParticles", 10000);
 
-	currentParticles = 0;
-	particleSaturation = 0;
-	numPerlinProjectiles = 0;
+	currentParticles       = 0;
+	currentNanoParticles   = 0;
+	particleSaturation     = 0.0f;
+	nanoParticleSaturation = 0.0f;
+	numPerlinProjectiles   = 0;
 
 	// preload some IDs
 	// (note that 0 is reserved for unsynced projectiles)
@@ -296,7 +305,7 @@ CProjectileHandler::CProjectileHandler()
 	}
 
 
-	flying3doPieces = new FlyingPiece_List;
+	flying3doPieces = new FlyingPiece_Set;
 	flyingPieces.push_back(flying3doPieces);
 
 	for (int a = 0; a < 4; ++a) {
@@ -330,6 +339,8 @@ CProjectileHandler::CProjectileHandler()
 
 CProjectileHandler::~CProjectileHandler()
 {
+	AddRenderObjects();
+
 	for (int a = 0; a < 8; ++a) {
 		glDeleteTextures (1, &perlinTex[a]);
 	}
@@ -342,16 +353,24 @@ CProjectileHandler::~CProjectileHandler()
 	for(gfi = groundFlashes.begin(); gfi != groundFlashes.end(); ++gfi) {
 		delete *gfi;
 	}
-	distlist.clear();
+	distset.clear();
 
 	if (shadowHandler->canUseShadows) {
 		glSafeDeleteProgram(projectileShadowVP);
 	}
 
+	for(std::vector<FlyingPiece *>::iterator fpi = flying3doPiecesToAdd.begin(); fpi != flying3doPiecesToAdd.end(); ++fpi) {
+		flying3doPieces->insert(*fpi);
+	}
+
+	for(std::vector<FlyingPieceToAdd>::iterator fpi = flyings3oPiecesToAdd.begin(); fpi != flyings3oPiecesToAdd.end(); ++fpi) {
+		flying3doPieces->insert((*fpi).fp); // it's not 3do, but we just want it deleted...
+	}
+
 	/* Also invalidates flying3doPieces and flyings3oPieces. */
-	for (list<FlyingPiece_List*>::iterator pti = flyingPieces.begin(); pti != flyingPieces.end(); ++pti) {
-		FlyingPiece_List * fpl = *pti;
-		for(list<FlyingPiece*>::iterator pi=fpl->begin();pi!=fpl->end();++pi){
+	for (list<FlyingPiece_Set*>::iterator pti = flyingPieces.begin(); pti != flyingPieces.end(); ++pti) {
+		FlyingPiece_Set * fpl = *pti;
+		for(std::set<FlyingPiece*>::iterator pi=fpl->begin();pi!=fpl->end();++pi){
 			if ((*pi)->verts != NULL){
 				delete[] ((*pi)->verts);
 			}
@@ -386,20 +405,10 @@ void CProjectileHandler::Serialize(creg::ISerializer *s)
 
 void CProjectileHandler::PostLoad()
 {
-
 }
-
-void CProjectileHandler::SetMaxParticles(int value)
-{
-	maxParticles = value;
-}
-
 
 void CProjectileHandler::Update()
 {
-	GML_RECMUTEX_LOCK(lua); // Update
-	GML_RECMUTEX_LOCK(proj); // Update
-
 	SCOPED_TIMER("Projectile handler");
 
 	GML_UPDATE_TICKS();
@@ -424,7 +433,7 @@ void CProjectileHandler::Update()
 				}
 			}
 
-			delete p;
+			projectilesToBeDeleted.push_back(p);
 		} else {
 			p->Update();
 			GML_GET_TICKS(p->lastProjUpdate);
@@ -432,46 +441,109 @@ void CProjectileHandler::Update()
 		}
 	}
 
-	for (unsigned int i = 0; i < groundFlashes.size(); /* do nothing */) {
-		CGroundFlash *gf = groundFlashes[i];
-		if (!gf->Update ()) {
-			// swap gf with the groundflash at the end of the list, so pop_back() can be used to erase it
-			if (i < groundFlashes.size() - 1) {
-				std::swap(groundFlashes.back(), groundFlashes[i]);
-			}
-			groundFlashes.pop_back();
-			delete gf;
-		} else {
-			i++;
+	{
+		GML_RECMUTEX_LOCK(proj); // Update
+		GML_STDMUTEX_LOCK(rproj); // Update
+
+		for(std::vector<CProjectile *>::iterator psi = projectilesToBeDeleted.begin(); psi != projectilesToBeDeleted.end(); ++psi) {
+			CProjectile *p = *psi;
+			renderprojectiles.erase(p);
+			tempRenderProjectilesToBeAdded.erase(p);
+			renderProjectilesToBeAdded.erase(p);
+			delete p;
 		}
 	}
 
-	for (list<FlyingPiece_List*>::iterator pti = flyingPieces.begin(); pti != flyingPieces.end(); ++pti) {
-		FlyingPiece_List* fpl = *pti;
-		FlyingPiece_List::iterator pi = fpl->begin();
-		while ( pi != fpl->end() ) {
-			FlyingPiece* p = *pi;
-			p->pos     += p->speed;
-			p->speed   *= 0.996f;
-			p->speed.y += mapInfo->map.gravity;
-			p->rot     += p->rotSpeed;
+	projectilesToBeDeleted.clear();
 
-			if (p->pos.y < ground->GetApproximateHeight(p->pos.x, p->pos.z - 10)) {
-				if (p->verts != NULL){
-					delete[] p->verts;
+	{
+		for (unsigned int i = 0; i < groundFlashes.size(); /* do nothing */) {
+			CGroundFlash *gf = groundFlashes[i];
+			if (!gf->Update ()) {
+				// swap gf with the groundflash at the end of the list, so pop_back() can be used to erase it
+				if (i < groundFlashes.size() - 1) {
+					std::swap(groundFlashes.back(), groundFlashes[i]);
 				}
-				delete p;
-				pi = fpl->erase(pi);
+				groundFlashes.pop_back();
+
+				groundFlashesToBeDeleted.push_back(gf);
 			} else {
+				i++;
+			}
+		}
+
+		GML_RECMUTEX_LOCK(flash); // Update
+		GML_STDMUTEX_LOCK(rflash); // Update
+
+		for(std::vector<CGroundFlash *>::iterator gi = groundFlashesToBeDeleted.begin(); gi != groundFlashesToBeDeleted.end(); ++gi) {
+			CGroundFlash *gf = *gi;
+			renderGroundFlashes.erase(gf);
+			tempRenderGroundFlashesToBeAdded.erase(gf);
+			renderGroundFlashesToBeAdded.erase(gf);
+			delete gf;
+		}
+	}
+
+	groundFlashesToBeDeleted.clear();
+
+	{
+		GML_RECMUTEX_LOCK(piece); // Update
+
+		for (list<FlyingPiece_Set*>::iterator pti = flyingPieces.begin(); pti != flyingPieces.end(); ++pti) {
+			FlyingPiece_Set* fpl = *pti;
+			FlyingPiece_Set::iterator pi = fpl->begin();
+			while ( pi != fpl->end() ) {
+				FlyingPiece* p = *pi;
+				p->pos     += p->speed;
+				p->speed   *= 0.996f;
+				p->speed.y += mapInfo->map.gravity;
+				p->rot     += p->rotSpeed;
+
+				if (p->pos.y < ground->GetApproximateHeight(p->pos.x, p->pos.z - 10))
+					flyingPiecesToRemove[p]=fpl; // use map to avoid duplicated objects
 				++pi;
 			}
 		}
 	}
 }
 
-inline int CompareProjDist(CProjectileHandler::projdist const &arg1, CProjectileHandler::projdist const &arg2) {
-	return (arg1.dist > arg2.dist);
+void CProjectileHandler::AddRenderObjects() {
+	{
+		GML_STDMUTEX_LOCK(rproj); // AddRenderObjects
+
+		for(std::set<CProjectile *>::iterator psi = tempRenderProjectilesToBeAdded.begin(); psi != tempRenderProjectilesToBeAdded.end(); ++psi) {
+			renderProjectilesToBeAdded.insert(*psi);
+		}
+	}
+
+	tempRenderProjectilesToBeAdded.clear();
+
+	{
+		GML_STDMUTEX_LOCK(rflash); // AddRenderObjects
+
+		for(std::set<CGroundFlash *>::iterator gi=tempRenderGroundFlashesToBeAdded.begin(); gi!=tempRenderGroundFlashesToBeAdded.end(); ++gi) {
+			renderGroundFlashesToBeAdded.insert(*gi);
+		}
+	}
+
+	tempRenderGroundFlashesToBeAdded.clear();
+
+	{
+		GML_RECMUTEX_LOCK(piece); // AddRenderObjects
+
+		for(std::vector<FlyingPiece *>::iterator pi=tempFlying3doPiecesToAdd.begin(); pi!=tempFlying3doPiecesToAdd.end(); ++pi) {
+			flying3doPiecesToAdd.push_back(*pi);
+		}
+
+		for(std::vector<FlyingPieceToAdd>::iterator pi=tempFlyings3oPiecesToAdd.begin(); pi!=tempFlyings3oPiecesToAdd.end(); ++pi) {
+			flyings3oPiecesToAdd.push_back(*pi);
+		}
+	}
+
+	tempFlying3doPiecesToAdd.clear();
+	tempFlyings3oPiecesToAdd.clear();
 }
+
 
 void CProjectileHandler::Draw(bool drawReflection,bool drawRefraction)
 {
@@ -487,62 +559,84 @@ void CProjectileHandler::Draw(bool drawReflection,bool drawRefraction)
 	/* Putting in, say, viewport culling will deserve refactoring. */
 
 	unitDrawer->SetupForUnitDrawing();
-	unitDrawer->SetupFor3DO();
-	GML_RECMUTEX_LOCK(proj); // Draw
 
-	Projectile_List::iterator psi;
-	distlist.clear();
+	{
+		GML_RECMUTEX_LOCK(piece); // Draw
 
-	// Projectiles (3do's get rendered, s3o qued)
-	for (psi = ps.begin(); psi != ps.end(); ++psi) {
-		CProjectile* pro = *psi;
+		for(std::map<FlyingPiece *, FlyingPiece_Set *>::iterator fpi = flyingPiecesToRemove.begin(); fpi != flyingPiecesToRemove.end(); ++fpi) {
+			FlyingPiece *p=(*fpi).first;
+			FlyingPiece_Set *fps=(*fpi).second;
+			fps->erase(p);
+			if (p->verts != NULL)
+				delete[] p->verts;
+			delete p;
+		}
+		flyingPiecesToRemove.clear();
 
-		pro->UpdateDrawPos();
+		for(std::vector<FlyingPiece *>::iterator fpi = flying3doPiecesToAdd.begin(); fpi != flying3doPiecesToAdd.end(); ++fpi) {
+			flying3doPieces->insert(*fpi);
+		}
+		flying3doPiecesToAdd.clear();
 
-		if (camera->InView(pro->pos, pro->drawRadius) && (gu->spectatingFullView || loshandler->InLos(pro, gu->myAllyTeam) ||
-			(pro->owner() && teamHandler->Ally(pro->owner()->allyteam, gu->myAllyTeam)))) {
+		for(std::vector<FlyingPieceToAdd>::iterator fpi = flyings3oPiecesToAdd.begin(); fpi != flyings3oPiecesToAdd.end(); ++fpi) {
+			FlyingPieceToAdd *fpa = &(*fpi);
+			int textureType = fpa->texture;
+			int team = fpa->team;
+			const size_t signedTextureType = (textureType < 0) ? 0 : textureType;
+			const size_t signedTeam = (team < 0) ? 0 : team;
 
-			CUnit* owner = pro->owner();
-			bool stunned = owner? owner->stunned: false;
-
-			if (owner && stunned && dynamic_cast<CShieldPartProjectile*>(pro)) {
-				// if the unit that fired this projectile is stunned and the projectile
-				// forms part of a shield (ie., the unit has a CPlasmaRepulser weapon but
-				// cannot fire it), prevent the projectile (shield segment) from being drawn
-				//
-				// also prevents shields being drawn at unit's pre-pickup position
-				// (since CPlasmaRepulser::Update() is responsible for updating
-				// CShieldPartProjectile::centerPos) if the unit is in a non-fireplatform
-				// transport
-				continue;
+			flyings3oPieces.reserve(textureType);
+			while(flyings3oPieces.size() <= signedTextureType) {
+				flyings3oPieces.push_back(std::vector<FlyingPiece_Set*>());
 			}
 
-
-			if (drawReflection) {
-				if (pro->pos.y < -pro->drawRadius)
-					continue;
-
-				float dif = pro->pos.y - camera->pos.y;
-				float3 zeroPos = camera->pos * (pro->pos.y / dif) + pro->pos * (-camera->pos.y / dif);
-
-				if (ground->GetApproximateHeight(zeroPos.x, zeroPos.z) > 3 + 0.5f * pro->drawRadius)
-					continue;
+			flyings3oPieces[textureType].reserve(team);
+			while(flyings3oPieces[textureType].size() <= signedTeam){
+				//logOutput.Print("Creating piece list %d %d.", textureType, flyings3oPieces[textureType].size());
+				FlyingPiece_Set * fpl = new FlyingPiece_Set;
+				flyings3oPieces[textureType].push_back(fpl);
+				flyingPieces.push_back(fpl);
 			}
-			if (drawRefraction && pro->pos.y > pro->drawRadius)
-				continue;
 
-			if (pro->s3domodel) {
-				if (pro->s3domodel->textureType) {
-					unitDrawer->QueS3ODraw(pro, pro->s3domodel->textureType);
-				} else {
-					pro->DrawUnitPart();
+			flyings3oPieces[textureType][team]->insert(fpa->fp);
+		}
+		flyings3oPiecesToAdd.clear();
+	}
+
+	// S3O flying pieces
+	for (size_t textureType = 1; textureType < flyings3oPieces.size(); textureType++){
+		/* TODO Skip this if there's no FlyingPieces. */
+
+		texturehandlerS3O->SetS3oTexture(textureType);
+
+		for (size_t team = 0; team < flyings3oPieces[textureType].size(); team++){
+			FlyingPiece_Set * fpl = flyings3oPieces[textureType][team];
+
+			unitDrawer->SetTeamColour(team);
+
+			va->Initialize();
+			va->EnlargeArrays(fpl->size()*4,0,VA_SIZE_TN);
+
+			numFlyingPieces += fpl->size();
+
+			for(std::set<FlyingPiece*>::iterator pi=fpl->begin();pi!=fpl->end();++pi){
+				CMatrix44f m;
+				m.Rotate((*pi)->rot,(*pi)->rotAxis);
+				float3 interPos=(*pi)->pos+(*pi)->speed*gu->timeOffset;
+
+				SS3OVertex * verts = (*pi)->verts;
+
+				float3 tp, tn;
+
+				for (int i = 0; i < 4; i++){
+					tp=m.Mul(verts[i].pos);
+					tn=m.Mul(verts[i].normal);
+					tp+=interPos;
+					va->AddVertexQTN(tp,verts[i].textureX,verts[i].textureY,tn);
 				}
 			}
-
-			struct projdist tmp;
-			tmp.proj = pro;
-			tmp.dist = pro->pos.dot(camera->forward);
-			distlist.push_back(tmp);
+			drawnPieces+=va->drawIndex()/32;
+			va->DrawArrayTN(GL_QUADS);
 		}
 	}
 
@@ -550,7 +644,7 @@ void CProjectileHandler::Draw(bool drawReflection,bool drawRefraction)
 	va->Initialize();
 	va->EnlargeArrays(flying3doPieces->size()*4,0,VA_SIZE_TN);
 	numFlyingPieces += flying3doPieces->size();
-	for(list<FlyingPiece*>::iterator pi=flying3doPieces->begin();pi!=flying3doPieces->end();++pi){
+	for(std::set<FlyingPiece*>::iterator pi=flying3doPieces->begin();pi!=flying3doPieces->end();++pi){
 		CMatrix44f m;
 		m.Rotate((*pi)->rot,(*pi)->rotAxis);
 		float3 interPos=(*pi)->pos+(*pi)->speed*gu->timeOffset;
@@ -582,130 +676,168 @@ void CProjectileHandler::Draw(bool drawReflection,bool drawRefraction)
 		tp+=interPos;
 		va->AddVertexQTN(tp,tex->xstart,tex->yend,tn);
 	}
+
 	drawnPieces+=va->drawIndex()/32;
 
-	unitDrawer->CleanUp3DO();
-
-	// draw qued S3O projectiles
-	unitDrawer->DrawQuedS3O();
-
-	// S3O flying pieces
+	unitDrawer->SetupFor3DO();
 	va->DrawArrayTN(GL_QUADS);
-	for (size_t textureType = 1; textureType < flyings3oPieces.size(); textureType++){
-		/* TODO Skip this if there's no FlyingPieces. */
 
-		texturehandlerS3O->SetS3oTexture(textureType);
+	distset.clear();
 
-		for (size_t team = 0; team < flyings3oPieces[textureType].size(); team++){
-			FlyingPiece_List * fpl = flyings3oPieces[textureType][team];
+	{
+		{
+			GML_STDMUTEX_LOCK(rproj); // Draw
 
-			unitDrawer->SetTeamColour(team);
-
-			va->Initialize();
-			va->EnlargeArrays(fpl->size()*4,0,VA_SIZE_TN);
-
-			numFlyingPieces += fpl->size();
-
-			for(list<FlyingPiece*>::iterator pi=fpl->begin();pi!=fpl->end();++pi){
-				CMatrix44f m;
-				m.Rotate((*pi)->rot,(*pi)->rotAxis);
-				float3 interPos=(*pi)->pos+(*pi)->speed*gu->timeOffset;
-
-				SS3OVertex * verts = (*pi)->verts;
-
-				float3 tp, tn;
-
-				for (int i = 0; i < 4; i++){
-					tp=m.Mul(verts[i].pos);
-					tn=m.Mul(verts[i].normal);
-					tp+=interPos;
-					va->AddVertexQTN(tp,verts[i].textureX,verts[i].textureY,tn);
-				}
+			for(std::set<CProjectile *>::iterator pi=renderProjectilesToBeAdded.begin(); pi!=renderProjectilesToBeAdded.end(); ++pi) {
+				renderprojectiles.insert(*pi);
 			}
-			drawnPieces+=va->drawIndex()/32;
-			va->DrawArrayTN(GL_QUADS);
+
+			renderProjectilesToBeAdded.clear();
+		}
+
+		GML_RECMUTEX_LOCK(proj); // Draw
+		// Projectiles (3do's get rendered, s3o qued)
+		for (std::set<CProjectile *>::iterator psi = renderprojectiles.begin(); psi != renderprojectiles.end(); ++psi) {
+			CProjectile* pro = *psi;
+
+			pro->UpdateDrawPos();
+
+			if (camera->InView(pro->pos, pro->drawRadius) && (gu->spectatingFullView || loshandler->InLos(pro, gu->myAllyTeam) ||
+				(pro->owner() && teamHandler->Ally(pro->owner()->allyteam, gu->myAllyTeam)))) {
+
+				CUnit* owner = pro->owner();
+				bool stunned = owner? owner->stunned: false;
+
+				if (owner && stunned && dynamic_cast<CShieldPartProjectile*>(pro)) {
+					// if the unit that fired this projectile is stunned and the projectile
+					// forms part of a shield (ie., the unit has a CPlasmaRepulser weapon but
+					// cannot fire it), prevent the projectile (shield segment) from being drawn
+					//
+					// also prevents shields being drawn at unit's pre-pickup position
+					// (since CPlasmaRepulser::Update() is responsible for updating
+					// CShieldPartProjectile::centerPos) if the unit is in a non-fireplatform
+					// transport
+					continue;
+				}
+
+				if (drawReflection) {
+					if (pro->pos.y < -pro->drawRadius)
+						continue;
+
+					float dif = pro->pos.y - camera->pos.y;
+					float3 zeroPos = camera->pos * (pro->pos.y / dif) + pro->pos * (-camera->pos.y / dif);
+
+					if (ground->GetApproximateHeight(zeroPos.x, zeroPos.z) > 3 + 0.5f * pro->drawRadius)
+						continue;
+				}
+				if (drawRefraction && pro->pos.y > pro->drawRadius)
+					continue;
+
+				if (pro->s3domodel) {
+					if (pro->s3domodel->type == MODELTYPE_S3O) {
+						unitDrawer->QueS3ODraw(pro, pro->s3domodel->textureType);
+					} else {
+						pro->DrawUnitPart();
+					}
+				}
+
+				pro->tempdist = pro->pos.dot(camera->forward);
+				distset.insert(pro);
+			}
+		}
+
+		unitDrawer->CleanUp3DO();
+		// draw qued S3O projectiles
+		unitDrawer->DrawQuedS3O();
+
+		unitDrawer->CleanUpUnitDrawing();
+
+		// Alpha transculent particles
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glEnable(GL_TEXTURE_2D);
+		textureAtlas->BindTexture();
+		glColor4f(1,1,1,0.2f);
+		glAlphaFunc(GL_GREATER,0.0f);
+		glEnable(GL_ALPHA_TEST);
+		glDepthMask(0);
+		glDisable(GL_FOG);
+
+		currentParticles = 0;
+		CProjectile::inArray = false;
+		CProjectile::va = GetVertexArray();
+		CProjectile::va->Initialize();
+
+		for (std::set<CProjectile *, distcmp>::iterator i = distset.begin(); i != distset.end(); ++i) {
+			(*i)->Draw();
 		}
 	}
-	unitDrawer->CleanUpUnitDrawing();
 
-	// Alpha transculent particles
-	sort(distlist.begin(), distlist.end(), CompareProjDist);
-
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_TEXTURE_2D);
-	textureAtlas->BindTexture();
-	glColor4f(1,1,1,0.2f);
-	glAlphaFunc(GL_GREATER,0.0f);
-	glEnable(GL_ALPHA_TEST);
-	glDepthMask(0);
-//	glFogfv(GL_FOG_COLOR,mapInfo->atmosphere.fogColor);
-	glDisable(GL_FOG);
-
-	currentParticles=0;
-	CProjectile::inArray=false;
-	CProjectile::va=GetVertexArray();
-	CProjectile::va->Initialize();
-	for(size_t a=0; a<distlist.size(); a++){
-		distlist.at(a).proj->Draw();
-	}
-	if(CProjectile::inArray) {
-		CProjectile::DrawArray();
+	if (CProjectile::inArray) {
+		// this increments currentParticles by the draw index of
+		// the projectile's vertex array, divided by 24 because
+		// each element is 12 + 4 + 4 + 4 bytes in size (pos + 
+		// u + v + color) for each type of "projectile"
+		// note: nano-particles (CGfxProjectile instances) also
+		// contribute to the count, but have their own creation
+		// cutoff
+		currentParticles += CProjectile::DrawArray();
 	}
 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	//glDisable(GL_TEXTURE_2D);
 	glDisable(GL_ALPHA_TEST);
-	glColor4f(1,1,1,1.0f);
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	glDepthMask(1);
 
-	currentParticles=(int)(ps.size()*0.8f+currentParticles*0.2f);
-	currentParticles+=(int)(0.2f*drawnPieces+0.3f*numFlyingPieces);
-	particleSaturation=(float)currentParticles/(float)maxParticles;
-//	glFogfv(GL_FOG_COLOR,mapInfo->atmosphere.fogColor);
+	currentParticles = (int) (renderprojectiles.size() * 0.8f + currentParticles * 0.2f);
+	currentParticles += (int) (0.2f * drawnPieces + 0.3f * numFlyingPieces);
+
+	particleSaturation     = currentParticles     / float(maxParticles);
+	nanoParticleSaturation = currentNanoParticles / float(maxNanoParticles);
 }
 
 void CProjectileHandler::DrawShadowPass(void)
 {
-	distlist.clear();
-	Projectile_List::iterator psi;
+	distset.clear();
 	glBindProgramARB( GL_VERTEX_PROGRAM_ARB, projectileShadowVP );
 	glEnable( GL_VERTEX_PROGRAM_ARB );
 	glDisable(GL_TEXTURE_2D);
 
-	GML_RECMUTEX_LOCK(proj); // DrawShadowPass
+	{
+		GML_RECMUTEX_LOCK(proj); // DrawShadowPass
 
-	for (psi = ps.begin(); psi != ps.end(); ++psi) {
-		if ((gu->spectatingFullView || loshandler->InLos(*psi, gu->myAllyTeam) ||
-			((*psi)->owner() && teamHandler->Ally((*psi)->owner()->allyteam, gu->myAllyTeam)))) {
+		for (std::set<CProjectile *>::iterator psi = renderprojectiles.begin(); psi != renderprojectiles.end(); ++psi) {
+			if ((gu->spectatingFullView || loshandler->InLos(*psi, gu->myAllyTeam) ||
+				((*psi)->owner() && teamHandler->Ally((*psi)->owner()->allyteam, gu->myAllyTeam)))) {
 
-			if ((*psi)->s3domodel)
-				(*psi)->DrawUnitPart();
-			if ((*psi)->castShadow){
-				struct projdist tmp;
-				tmp.proj = *psi;
-				distlist.push_back(tmp);
+					if ((*psi)->s3domodel)
+						(*psi)->DrawUnitPart();
+					if ((*psi)->castShadow){
+						distset.insert(*psi);
+					}
 			}
+		}
+
+		glEnable(GL_TEXTURE_2D);
+		textureAtlas->BindTexture();
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		glAlphaFunc(GL_GREATER,0.3f);
+		glEnable(GL_ALPHA_TEST);
+		glShadeModel(GL_SMOOTH);
+
+		CProjectile::inArray = false;
+		CProjectile::va = GetVertexArray();
+		CProjectile::va->Initialize();
+
+		for(std::set<CProjectile *, distcmp>::iterator i = distset.begin(); i != distset.end(); ++i) {
+			(*i)->Draw();
 		}
 	}
 
-	glEnable(GL_TEXTURE_2D);
-	textureAtlas->BindTexture();
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	glAlphaFunc(GL_GREATER,0.3f);
-	glEnable(GL_ALPHA_TEST);
-	glShadeModel(GL_SMOOTH);
-
-	CProjectile::inArray = false;
-	CProjectile::va = GetVertexArray();
-	CProjectile::va->Initialize();
-
-	for (size_t b = 0; b < distlist.size(); b++) {
-		distlist.at(b).proj->Draw();
+	if (CProjectile::inArray) {
+		currentParticles += CProjectile::DrawArray();
 	}
-
-	if (CProjectile::inArray)
-		CProjectile::DrawArray();
 
 	glShadeModel(GL_FLAT);
 	glDisable(GL_ALPHA_TEST);
@@ -716,8 +848,6 @@ void CProjectileHandler::DrawShadowPass(void)
 
 void CProjectileHandler::AddProjectile(CProjectile* p)
 {
-//	GML_RECMUTEX_LOCK(proj); // AddProjectile
-
 	ps.push_back(p);
 
 	if (p->synced && p->weapon) {
@@ -741,6 +871,8 @@ void CProjectileHandler::AddProjectile(CProjectile* p)
 		weaponProjectileIDs[p->id] = pp;
 		eventHandler.ProjectileCreated(pp.first, pp.second);
 	}
+
+	tempRenderProjectilesToBeAdded.insert(p);
 }
 
 
@@ -774,8 +906,7 @@ void CProjectileHandler::CheckUnitCollisions(
 
 		if (CCollisionHandler::DetectHit(unit, ppos0, ppos1, &q)) {
 			if (q.lmp != NULL) {
-				unit->lastAttackedPiece      = q.lmp;
-				unit->lastAttackedPieceFrame = gs->frameNum;
+				unit->SetLastAttackedPiece(q.lmp, gs->frameNum);
 			}
 
 			// The current projectile <p> won't reach the raytraced surface impact
@@ -869,8 +1000,9 @@ void CProjectileHandler::CheckCollisions()
 
 void CProjectileHandler::AddGroundFlash(CGroundFlash* flash)
 {
-//	GML_RECMUTEX_LOCK(proj); // AddGroundFlash
 	groundFlashes.push_back(flash);
+
+	tempRenderGroundFlashesToBeAdded.insert(flash);
 }
 
 
@@ -894,12 +1026,21 @@ void CProjectileHandler::DrawGroundFlashes(void)
 	CGroundFlash::va->Initialize();
 
 	{
-		GML_RECMUTEX_LOCK(proj); // DrawGroundFlashes
+		{
+			GML_STDMUTEX_LOCK(rflash); // DrawGroundFlashes
 
-		CGroundFlash::va->EnlargeArrays(8*groundFlashes.size(),0,VA_SIZE_TC);
+			for(std::set<CGroundFlash *>::iterator gi = renderGroundFlashesToBeAdded.begin(); gi != renderGroundFlashesToBeAdded.end(); ++gi) {
+				renderGroundFlashes.insert(*gi);
+			}
 
-		vector<CGroundFlash*>::iterator gfi;
-		for(gfi=groundFlashes.begin();gfi!=groundFlashes.end();++gfi){
+			renderGroundFlashesToBeAdded.clear();
+		}
+
+		GML_RECMUTEX_LOCK(flash); // DrawGroundFlashes
+
+		CGroundFlash::va->EnlargeArrays(8*renderGroundFlashes.size(),0,VA_SIZE_TC);
+
+		for(std::set<CGroundFlash*>::iterator gfi = renderGroundFlashes.begin(); gfi != renderGroundFlashes.end(); ++gfi){
 			if ((*gfi)->alwaysVisible || gu->spectatingFullView ||
 				loshandler->InAirLos((*gfi)->pos,gu->myAllyTeam))
 				(*gfi)->Draw();
@@ -943,33 +1084,10 @@ void CProjectileHandler::AddFlyingPiece(float3 pos,float3 speed,S3DOPiece* objec
 	fp->rotSpeed=gu->usRandFloat()*0.1f;
 	fp->rot=0;
 
-	GML_RECMUTEX_LOCK(proj); // AddFlyingPiece
-
-	flying3doPieces->push_back(fp);
+	tempFlying3doPiecesToAdd.push_back(fp);
 }
 
 void CProjectileHandler::AddFlyingPiece(int textureType, int team, float3 pos, float3 speed, SS3OVertex * verts){
-	FlyingPiece_List * pieceList = NULL;
-
-	GML_RECMUTEX_LOCK(proj); // AddFlyingPiece
-
-	flyings3oPieces.reserve(textureType);
-	const size_t signedTextureType = (textureType < 0) ? 0 : textureType;
-	while(flyings3oPieces.size() <= signedTextureType) {
-		flyings3oPieces.push_back(vector<FlyingPiece_List*>());
-	}
-
-	flyings3oPieces[textureType].reserve(team);
-	const size_t signedTeam = (team < 0) ? 0 : team;
-	while(flyings3oPieces[textureType].size() <= signedTeam){
-		//logOutput.Print("Creating piece list %d %d.", textureType, flyings3oPieces[textureType].size());
-
-		FlyingPiece_List * fpl = new FlyingPiece_List;
-		flyings3oPieces[textureType].push_back(fpl);
-		flyingPieces.push_back(fpl);
-	}
-
-	pieceList=flyings3oPieces[textureType][team];
 
 	FlyingPiece* fp=new FlyingPiece;
 	fp->pos=pos;
@@ -984,7 +1102,7 @@ void CProjectileHandler::AddFlyingPiece(int textureType, int team, float3 pos, f
 	fp->rotSpeed=gu->usRandFloat()*0.1f;
 	fp->rot=0;
 
-	pieceList->push_back(fp);
+	tempFlyings3oPiecesToAdd.push_back(FlyingPieceToAdd(fp,textureType,team));
 }
 
 void CProjectileHandler::UpdateTextures()

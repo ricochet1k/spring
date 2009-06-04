@@ -39,14 +39,13 @@
 const int TARGET_LOST_TIMER =120;	// in calls to SlowUpdate() (approx. once every second)
 
 CR_BIND(CCommandQueue, );
-
 CR_REG_METADATA(CCommandQueue, (
 				CR_MEMBER(queue),
-				CR_MEMBER(tagCounter),
-				CR_ENUM_MEMBER(queueType)
+				CR_ENUM_MEMBER(queueType),
+				CR_MEMBER(tagCounter)
 				));
-CR_BIND_DERIVED(CCommandAI, CObject, );
 
+CR_BIND_DERIVED(CCommandAI, CObject, );
 CR_REG_METADATA(CCommandAI, (
 				CR_MEMBER(stockpileWeapon),
 
@@ -70,32 +69,33 @@ CR_REG_METADATA(CCommandAI, (
 				CR_RESERVED(64),
 				CR_POSTLOAD(PostLoad)
 				));
-CCommandAI::CCommandAI()
-:	lastUserCommand(-1000),
+
+CCommandAI::CCommandAI():
+	stockpileWeapon(0),
+	lastUserCommand(-1000),
+	lastFinishCommand(0),
+	owner(owner),
 	orderTarget(0),
 	targetDied(false),
 	inCommand(false),
 	selected(false),
-	owner(owner),
-	stockpileWeapon(0),
-	lastSelectedCommandPage(0),
 	repeatOrders(false),
-	lastFinishCommand(0),
+	lastSelectedCommandPage(0),
 	unimportantMove(false),
 	targetLostTimer(TARGET_LOST_TIMER)
 {}
 
-CCommandAI::CCommandAI(CUnit* owner)
-:	lastUserCommand(-1000),
+CCommandAI::CCommandAI(CUnit* owner):
+	stockpileWeapon(0),
+	lastUserCommand(-1000),
+	lastFinishCommand(0),
+	owner(owner),
 	orderTarget(0),
 	targetDied(false),
 	inCommand(false),
 	selected(false),
-	owner(owner),
-	stockpileWeapon(0),
-	lastSelectedCommandPage(0),
 	repeatOrders(false),
-	lastFinishCommand(0),
+	lastSelectedCommandPage(0),
 	unimportantMove(false),
 	targetLostTimer(TARGET_LOST_TIMER)
 {
@@ -316,7 +316,7 @@ CCommandAI::~CCommandAI()
 
 void CCommandAI::PostLoad()
 {
-	selected = false; // HACK: selected list does not serialized
+	selected = false; // FIXME: HACK: selected list is not serialized
 }
 
 vector<CommandDescription>& CCommandAI::GetPossibleCommands()
@@ -404,7 +404,7 @@ bool CCommandAI::AllowedCommand(const Command& c, bool fromSynced)
 	}
 
 	if ((c.id == CMD_RECLAIM) && (c.params.size() == 1 || c.params.size() == 5)) {
-		const int unitID = (int) c.params[0];
+		const unsigned int unitID = (unsigned int) c.params[0];
 		if (unitID < uh->MaxUnits()) { // not a feature
 			CUnit* unit = uh->units[unitID];
 			if (unit && !unit->unitDef->reclaimable)
@@ -839,9 +839,7 @@ void CCommandAI::ExecuteInsert(const Command& c, bool fromSynced)
 		unimportantMove = false;
 		orderTarget = NULL;
 		const Command& cmd = commandQue.front();
-		if (owner->group) {
-			owner->group->CommandFinished(owner->id, cmd.id);
-		}
+		eoh->CommandFinished(*owner, cmd);
 		eventHandler.UnitCmdDone(owner, cmd.id, cmd.tag);
 	}
 
@@ -1126,9 +1124,9 @@ void CCommandAI::ExecuteAttack(Command &c)
 		owner->commandShotCount = -1;
 
 		if (c.params.size() == 1) {
-			const int targetID     = int(c.params[0]);
-			const bool legalTarget = (targetID >= 0 && targetID < uh->MaxUnits());
-			CUnit* targetUnit      = (legalTarget)? uh->units[targetID]: 0x0;
+			const unsigned int targetID = (unsigned int) c.params[0];
+			const bool legalTarget      = (targetID >= 0) && (targetID < uh->MaxUnits());
+			CUnit* targetUnit           = (legalTarget)? uh->units[targetID]: 0x0;
 
 			if (legalTarget && targetUnit != 0x0 && targetUnit != owner) {
 				owner->AttackUnit(targetUnit, c.id == CMD_DGUN);
@@ -1310,8 +1308,8 @@ void CCommandAI::DrawDefaultCommand(const Command& c) const
 	const int paramsCount = c.params.size();
 
 	if (paramsCount == 1) {
-		const int unitID = int(c.params[0]);
-		if ((unitID >= 0) && (unitID < uh->MaxUnits())) {
+		const unsigned int unitID = (unsigned int) c.params[0];
+		if (unitID < uh->MaxUnits()) {
 			const CUnit* unit = uh->units[unitID];
 			if((unit != NULL) && isTrackable(unit)) {
 				const float3 endPos =
@@ -1344,7 +1342,7 @@ void CCommandAI::DrawDefaultCommand(const Command& c) const
 void CCommandAI::FinishCommand(void)
 {
 	assert(!commandQue.empty());
-	const Command& cmd = commandQue.front();
+	const Command cmd = commandQue.front();
 	const int cmdID  = cmd.id;  // save
 	const int cmdTag = cmd.tag; // save
 	const bool dontrepeat = (cmd.options & DONT_REPEAT) ||
@@ -1362,9 +1360,7 @@ void CCommandAI::FinishCommand(void)
 	targetDied = false;
 	unimportantMove = false;
 	orderTarget = 0;
-	if (owner->group) {
-		owner->group->CommandFinished(owner->id, cmdID);
-	}
+	eoh->CommandFinished(*owner, cmd);
 	eventHandler.UnitCmdDone(owner, cmdID, cmdTag);
 
 	if (commandQue.empty()) {
@@ -1545,9 +1541,13 @@ void CCommandAI::StopAttackingAllyTeam(int ally)
 	// erasing in the middle invalidates all iterators
 	for (CCommandQueue::iterator it = commandQue.begin(); it != commandQue.end(); ++it) {
 		const Command &c = *it;
-		if ((c.id == CMD_FIGHT || c.id == CMD_ATTACK) && c.params.size() == 1 &&
-				uh->units[(int)c.params[0]]->allyteam == ally)
-			todel.push_back(it - commandQue.begin());
+		if ((c.id == CMD_FIGHT || c.id == CMD_ATTACK) && c.params.size() == 1) {
+			int targetId = (int)c.params[0];
+			if (targetId < uh->MaxUnits() && uh->units[targetId]
+					&& uh->units[targetId]->allyteam == ally) {
+				todel.push_back(it - commandQue.begin());
+			}
+		}
 	}
 	for (std::vector<int>::reverse_iterator it = todel.rbegin(); it != todel.rend(); ++it) {
 		commandQue.erase(commandQue.begin() + *it);

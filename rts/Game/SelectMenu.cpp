@@ -14,6 +14,7 @@
 #include "LogOutput.h"
 #include "Exceptions.h"
 #include "TdfParser.h"
+#include "Util.h"
 #include "FileSystem/ArchiveScanner.h"
 #include "FileSystem/FileHandler.h"
 #include "FileSystem/VFSHandler.h"
@@ -54,10 +55,11 @@ std::string CreateDefaultSetup(const std::string& map, const std::string& mod, c
 	player1->AddPair("Team", 1);
 
 	TdfParser::TdfSection* team0 = game->construct_subsection("TEAM0");
-	team0->AddPair("Leader", 0);
+	team0->AddPair("TeamLeader", 0);
 	team0->AddPair("AllyTeam", 0);
 
 	TdfParser::TdfSection* team1 = game->construct_subsection("TEAM1");
+	team1->AddPair("TeamLeader", 1);
 	team1->AddPair("AllyTeam", 1);
 
 	TdfParser::TdfSection* ally0 = game->construct_subsection("ALLYTEAM0");
@@ -72,21 +74,24 @@ std::string CreateDefaultSetup(const std::string& map, const std::string& mod, c
 	return str.str();
 }
 
-SelectMenu::SelectMenu(bool server) :
-		showList(NULL)
+SelectMenu::SelectMenu(bool server): showList(NULL)
 {
 	mySettings = new ClientSetup();
 	mySettings->isHost = server;
-	mySettings->myPlayerName = configHandler->GetString("name", "Player");
-	if (!mySettings->isHost)
-	{
-		userInput=configHandler->GetString("address","");
+	mySettings->myPlayerName = configHandler->GetString("name", "UnnamedPlayer");
+
+	if (mySettings->myPlayerName.empty()) {
+		mySettings->myPlayerName = "UnnamedPlayer";
+	} else {
+		mySettings->myPlayerName = StringReplaceInPlace(mySettings->myPlayerName, ' ', '_');
+	}
+
+	if (!mySettings->isHost) {
+		userInput = configHandler->GetString("address", "");
 		writingPos = userInput.length();
 		userPrompt = "Enter server address: ";
 		userWriting = true;
-	}
-	else
-	{
+	} else {
 		ShowModList();
 	}
 }
@@ -160,23 +165,24 @@ bool SelectMenu::Draw()
 		const float yStart = 0.75f;
 
 		const float fontScale = 1.0f;
+		const float fontSize  = fontScale * font->GetSize();
 
 		// draw the caret
 		const int caretPos = userPrompt.length() + writingPos;
 		const string caretStr = tempstring.substr(0, caretPos);
-		const float caretWidth = font->CalcTextWidth(caretStr.c_str());
+		const float caretWidth = fontSize * font->GetTextWidth(caretStr) * gu->pixelX;
 		char c = userInput[writingPos];
 		if (c == 0) { c = ' '; }
-		const float cw = fontScale * font->CalcCharWidth(c);
-		const float csx = xStart + (fontScale * caretWidth);
+		const float cw = fontSize * font->GetCharacterWidth(c) * gu->pixelX;
+		const float csx = xStart + caretWidth;
 		glDisable(GL_TEXTURE_2D);
 		const float f = 0.5f * (1.0f + fastmath::sin((float)SDL_GetTicks() * 0.015f));
 		glColor4f(f, f, f, 0.75f);
-		glRectf(csx, yStart, csx + cw, yStart + fontScale * font->GetHeight());
+		glRectf(csx, yStart, csx + cw, yStart + fontSize * font->GetLineHeight() * gu->pixelY);
 		glEnable(GL_TEXTURE_2D);
 
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-		font->glPrintAt(xStart, yStart, fontScale, tempstring.c_str());
+		font->glPrint(xStart, yStart, fontSize, FONT_NORM, tempstring);
 	}
 
 	if (showList) {
@@ -225,7 +231,7 @@ void SelectMenu::ShowMapList()
 
 	list->AddItem("Random map", "Random map"); // always first
 	for (std::set<std::string>::iterator sit = mapSet.begin(); sit != mapSet.end(); ++sit) {
-		list->AddItem(sit->c_str(), sit->c_str());
+		list->AddItem(*sit, *sit);
 	}
 	showList = list;
 }
@@ -257,7 +263,7 @@ void SelectMenu::ShowModList()
 	list->AddItem("Random mod", "Random mod"); // always first
 	std::map<std::string, std::string>::iterator mit;
 	for (mit = modMap.begin(); mit != modMap.end(); ++mit) {
-		list->AddItem(mit->first.c_str(), mit->second.c_str());
+		list->AddItem(mit->first, mit->second);
 	}
 	showList = list;
 }

@@ -21,6 +21,7 @@
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/VertexArray.h"
 #include "Rendering/ShadowHandler.h"
+#include "Rendering/Textures/S3OTextureHandler.h"
 #include "Rendering/UnitModels/3DOParser.h"
 #include "Rendering/UnitModels/UnitDrawer.h"
 #include "Sim/Misc/CollisionVolume.h"
@@ -71,7 +72,7 @@ CR_REG_METADATA(FeatureDef, (
 		));
 
 
-CR_BIND_DERIVED(CFeatureHandler,CObject, );
+CR_BIND(CFeatureHandler, );
 
 CR_REG_METADATA(CFeatureHandler, (
 
@@ -140,7 +141,6 @@ CFeatureHandler::~CFeatureHandler()
 			delete fd->collisionVolume;
 			fd->collisionVolume = 0;
 		}
-
 		delete *fi;
 	}
 
@@ -218,7 +218,7 @@ const FeatureDef* CFeatureHandler::CreateFeatureDef(const LuaTable& fdTable,
 	fd->resurrectable =  fdTable.GetInt("resurrectable",   -1);
 
 	//this seem to be the closest thing to floating that ta wreckage contains
-	fd->floating = fdTable.GetBool("nodrawundergray", true);
+	fd->floating = fdTable.GetBool("nodrawundergray", false);
 	if (fd->floating && !fd->blocking) {
 		fd->floating = false;
 	}
@@ -234,7 +234,7 @@ const FeatureDef* CFeatureHandler::CreateFeatureDef(const LuaTable& fdTable,
 
 	fd->smokeTime = fdTable.GetInt("smokeTime", 300);
 
-	fd->drawType = DRAWTYPE_3DO;
+	fd->drawType = fdTable.GetInt("drawType", DRAWTYPE_MODEL);
 	fd->modelname = fdTable.GetString("object", "");
 	if (!fd->modelname.empty()) {
 		if (fd->modelname.find(".") == std::string::npos) {
@@ -318,50 +318,50 @@ void CFeatureHandler::LoadFeaturesFromMap(bool onlyCreateDefs)
 	for (int a = 0; a < numType; ++a) {
 		const string name = StringToLower(readmap->GetFeatureType(a));
 
-		if (name.find("treetype") != string::npos) {
-			FeatureDef* fd = new FeatureDef;
-			fd->blocking = 1;
-			fd->burnable = true;
-			fd->destructable = 1;
-			fd->reclaimable = true;
-			fd->drawType = DRAWTYPE_TREE;
-			fd->modelType = atoi(name.substr(8).c_str());
-			fd->energy = 250;
-			fd->metal = 0;
-			fd->reclaimTime = 250;
-			fd->maxHealth = 5;
-			fd->xsize = 2;
-			fd->zsize = 2;
-			fd->myName = name;
-			fd->description = "Tree";
-			fd->mass = 20;
-			fd->collisionVolume = new CollisionVolume("", ZeroVector, ZeroVector, COLVOL_TEST_DISC);
-			AddFeatureDef(name, fd);
-		}
-		else if (name.find("geovent") != string::npos) {
-			FeatureDef* fd = new FeatureDef;
-			fd->blocking = 0;
-			fd->burnable = 0;
-			fd->destructable = 0;
-			fd->reclaimable = false;
-			fd->geoThermal = true;
-			// geos are drawn into the ground texture and emit smoke to be visible
-			fd->drawType = DRAWTYPE_NONE;
-			fd->modelType = 0;
-			fd->energy = 0;
-			fd->metal = 0;
-			fd->reclaimTime = 0;
-			fd->maxHealth = 0;
-			fd->xsize = 0;
-			fd->zsize = 0;
-			fd->myName = name;
-			fd->mass = 100000;
-			// geothermals have no collision volume at all
-			fd->collisionVolume = 0;
-			AddFeatureDef(name, fd);
-		}
-		else {
-			if (GetFeatureDef(name) == NULL) {
+		if (GetFeatureDef(name) == NULL) {
+			if (name.find("treetype") != string::npos) {
+				FeatureDef* fd = new FeatureDef;
+				fd->blocking = 1;
+				fd->burnable = true;
+				fd->destructable = 1;
+				fd->reclaimable = true;
+				fd->drawType = DRAWTYPE_TREE;
+				fd->modelType = atoi(name.substr(8).c_str());
+				fd->energy = 250;
+				fd->metal = 0;
+				fd->reclaimTime = 1500;
+				fd->maxHealth = 5;
+				fd->xsize = 2;
+				fd->zsize = 2;
+				fd->myName = name;
+				fd->description = "Tree";
+				fd->mass = 20;
+				fd->collisionVolume = new CollisionVolume("", ZeroVector, ZeroVector, COLVOL_TEST_DISC);
+				AddFeatureDef(name, fd);
+			}
+			else if (name.find("geovent") != string::npos) {
+				FeatureDef* fd = new FeatureDef;
+				fd->blocking = 0;
+				fd->burnable = 0;
+				fd->destructable = 0;
+				fd->reclaimable = false;
+				fd->geoThermal = true;
+				// geos are drawn into the ground texture and emit smoke to be visible
+				fd->drawType = DRAWTYPE_NONE;
+				fd->modelType = 0;
+				fd->energy = 0;
+				fd->metal = 0;
+				fd->reclaimTime = 0;
+				fd->maxHealth = 0;
+				fd->xsize = 0;
+				fd->zsize = 0;
+				fd->myName = name;
+				fd->mass = 100000;
+				// geothermals have no collision volume at all
+				fd->collisionVolume = 0;
+				AddFeatureDef(name, fd);
+			}
+			else {
 				logOutput.Print("Unknown map feature type %s", name.c_str());
 			}
 		}
@@ -383,7 +383,7 @@ void CFeatureHandler::LoadFeaturesFromMap(bool onlyCreateDefs)
 
 			const float ypos = ground->GetHeight2(mfi[a].pos.x, mfi[a].pos.z);
 			(new CFeature)->Initialize (float3(mfi[a].pos.x, ypos, mfi[a].pos.z),
-			                                 featureDefs[name], (short int)mfi[a].rotation,
+			                                 def->second, (short int)mfi[a].rotation,
 			                                 0, -1, "");
 		}
 		delete[] mfi;
@@ -406,7 +406,7 @@ int CFeatureHandler::AddFeature(CFeature* feature)
 	activeFeatures.insert(feature);
 	SetFeatureUpdateable(feature);
 
-	if (feature->def->drawType == DRAWTYPE_3DO) {
+	if (feature->def->drawType == DRAWTYPE_MODEL) {
 		int quad = int(feature->pos.z / DRAW_QUAD_SIZE / SQUARE_SIZE) * drawQuadsX +
 		           int(feature->pos.x / DRAW_QUAD_SIZE / SQUARE_SIZE);
 		DrawQuad* dq = &drawQuads[quad];
@@ -422,7 +422,7 @@ int CFeatureHandler::AddFeature(CFeature* feature)
 
 void CFeatureHandler::DeleteFeature(CFeature* feature)
 {
-	GML_RECMUTEX_LOCK(feat); // DeleteFeature, maybe superfluous
+	GML_RECMUTEX_LOCK(feat); // DeleteFeature - maybe superfluous
 
 	toBeRemoved.push_back(feature->id);
 
@@ -486,6 +486,7 @@ void CFeatureHandler::Update()
 	}
 
 	if(!toBeRemoved.empty()) {
+
 		GML_RECMUTEX_LOCK(feat); // Update
 		GML_RECMUTEX_LOCK(quad); // Update
 
@@ -505,6 +506,8 @@ void CFeatureHandler::Update()
 				if (feature->inUpdateQue) {
 					updateFeatures.erase(feature);
 				}
+				fadeFeatures.erase(feature);
+				fadeFeaturesS3O.erase(feature);
 
 				delete feature;
 			}
@@ -567,14 +570,14 @@ void CFeatureHandler::TerrainChanged(int x1, int y1, int x2, int y2)
 		for (fi = features.begin(); fi != features.end(); ++fi) {
 			CFeature* feature = *fi;
 			float3& fpos = feature->pos;
-			if (fpos.y > ground->GetHeight(fpos.x, fpos.z)) {
+			float gh = ground->GetHeight2(fpos.x, fpos.z);
+			float wh = gh;
+			if(feature->def->floating)
+				wh = ground->GetHeight(fpos.x, fpos.z);
+			if (fpos.y > wh || fpos.y < gh) {
 				SetFeatureUpdateable(feature);
 
-				if (feature->def->floating){
-					feature->finalHeight = ground->GetHeight(fpos.x, fpos.z);
-				} else {
-					feature->finalHeight = ground->GetHeight2(fpos.x, fpos.z);
-				}
+				feature->finalHeight = wh;
 
 				feature->CalculateTransform ();
 			}
@@ -582,9 +585,11 @@ void CFeatureHandler::TerrainChanged(int x1, int y1, int x2, int y2)
 	}
 }
 
-
 void CFeatureHandler::Draw()
 {
+	fadeFeatures.clear();
+	fadeFeaturesS3O.clear();
+
 	drawFar.clear();
 
 	GML_RECMUTEX_LOCK(feat); // Draw
@@ -619,6 +624,71 @@ void CFeatureHandler::Draw()
 	glDisable(GL_FOG);
 }
 
+void CFeatureHandler::DrawFadeFeatures(bool submerged, bool noAdvShading) {
+	GML_RECMUTEX_LOCK(feat); // DrawFadeFeatures
+
+	if(unitDrawer->advShading && !noAdvShading) {
+		unitDrawer->SetupForUnitDrawing();
+
+		glDisable(GL_ALPHA_TEST);
+
+		unitDrawer->SetupFor3DO();
+
+		double plane[4]={0,submerged?-1:1,0,0};
+		glClipPlane(GL_CLIP_PLANE3, plane);
+
+		glEnable(GL_FOG);
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+
+		for(std::set<CFeature *>::iterator i = fadeFeatures.begin(); i != fadeFeatures.end(); ++i) {
+			unitDrawer->DrawFeatureStatic(*i);
+		}
+
+		unitDrawer->CleanUp3DO();
+
+		for(std::set<CFeature *>::iterator i = fadeFeaturesS3O.begin(); i != fadeFeaturesS3O.end(); ++i) {
+			texturehandlerS3O->SetS3oTexture((*i)->model->textureType);
+			(*i)->DrawS3O();
+		}
+
+		glDisable(GL_FOG);
+		glEnable(GL_ALPHA_TEST);
+
+		unitDrawer->CleanUpUnitDrawing();
+	}
+	else {
+		unitDrawer->SetupForGhostDrawing();
+
+		glDisable(GL_ALPHA_TEST);
+
+		unitDrawer->SetupFor3DO();
+
+		double plane[4]={0,submerged?-1:1,0,0};
+		glClipPlane(GL_CLIP_PLANE3, plane);
+
+		glEnable(GL_FOG);
+		glFogfv(GL_FOG_COLOR, mapInfo->atmosphere.fogColor);
+
+		for(std::set<CFeature *>::iterator i = fadeFeatures.begin(); i != fadeFeatures.end(); ++i) {
+			glColor4f(1,1,1,(*i)->tempalpha);
+			unitDrawer->DrawFeatureStatic(*i);
+		}
+
+		unitDrawer->CleanUp3DO();
+
+		for(std::set<CFeature *>::iterator i = fadeFeaturesS3O.begin(); i != fadeFeaturesS3O.end(); ++i) {
+			glColor4f(1,1,1,(*i)->tempalpha);
+			texturehandlerS3O->SetS3oTexture((*i)->model->textureType);
+			(*i)->DrawS3O();
+		}
+
+		glDisable(GL_FOG);
+		glEnable(GL_ALPHA_TEST);
+
+		unitDrawer->CleanUpGhostDrawing();
+	}
+}
+
 
 void CFeatureHandler::DrawShadowPass()
 {
@@ -646,6 +716,8 @@ public:
 	int drawQuadsX;
 	bool drawReflection, drawRefraction;
 	float unitDrawDist;
+	float sqFadeDistBegin;
+	float sqFadeDistEnd;
 	std::vector<CFeature*>* farFeatures;
 };
 
@@ -659,7 +731,7 @@ void CFeatureDrawer::DrawQuad(int x, int y)
 		const FeatureDef* def = f->def;
 
 		if ((f->allyteam == -1 || f->allyteam == gu->myAllyTeam || gu->spectatingFullView ||
-			loshandler->InLos(f->pos, gu->myAllyTeam)) && def->drawType == DRAWTYPE_3DO) {
+			loshandler->InLos(f->pos, gu->myAllyTeam)) && def->drawType == DRAWTYPE_MODEL) {
 
 			if (drawReflection) {
 				float3 zeroPos;
@@ -681,11 +753,32 @@ void CFeatureDrawer::DrawQuad(int x, int y)
 			float sqDist = (f->pos - camera->pos).SqLength2D();
 			float farLength = f->sqRadius * unitDrawDist * unitDrawDist;
 
-			if (sqDist<farLength) {
-				if (f->model->type==MODELTYPE_3DO) {
-					unitDrawer->DrawFeatureStatic(f);
-				} else {
-					unitDrawer->QueS3ODraw(f, f->model->textureType);
+			float sqFadeDistE;
+			float sqFadeDistB;
+			if(farLength < sqFadeDistEnd) {
+				sqFadeDistE = farLength;
+				sqFadeDistB = farLength * 0.75f * 0.75f;
+			} else {
+				sqFadeDistE = sqFadeDistEnd;
+				sqFadeDistB = sqFadeDistBegin;
+			}
+
+			if (sqDist < farLength) {
+				if((!unitDrawer->advFade && unitDrawer->advShading) || sqDist < sqFadeDistB) {
+					f->tempalpha = 1.0f;
+					if (f->model->type == MODELTYPE_3DO) {
+						unitDrawer->DrawFeatureStatic(f);
+					} else {
+						unitDrawer->QueS3ODraw(f, f->model->textureType);
+					}
+				}
+				else if(sqDist < sqFadeDistE) {
+					f->tempalpha = 1.0f - (sqDist - sqFadeDistB) / (sqFadeDistE - sqFadeDistB);
+					if (f->model->type == MODELTYPE_3DO) {
+						featureHandler->fadeFeatures.insert(f);
+					} else {
+						featureHandler->fadeFeaturesS3O.insert(f);
+					}
 				}
 			} else {
 				if (farFeatures)
@@ -709,6 +802,8 @@ void CFeatureHandler::DrawRaw(int extraSize, std::vector<CFeature*>* farFeatures
 	drawer.drawReflection=water->drawReflection;
 	drawer.drawRefraction=water->drawRefraction;
 	drawer.unitDrawDist=unitDrawer->unitDrawDist;
+	drawer.sqFadeDistEnd = featureDist * featureDist;
+	drawer.sqFadeDistBegin = 0.75f * 0.75f * featureDist * featureDist;
 	drawer.farFeatures = farFeatures;
 
 	readmap->GridVisibility(camera, DRAW_QUAD_SIZE, featureDist, &drawer, extraSize);

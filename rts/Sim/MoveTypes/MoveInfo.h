@@ -45,18 +45,25 @@ struct MoveData {
 		Ship
 	};
 	enum TerrainClass {
-		Land,					// we are restricted to "land" (terrain with height >= 0)
-		Water,					// we are restricted to "water" (terrain with height < 0)
-		Mixed					// we can exist at heights both greater and smaller than 0
+		/// we are restricted to "land" (terrain with height >= 0)
+		Land,
+		/// we are restricted to "water" (terrain with height < 0)
+		Water,
+		/// we can exist at heights both greater and smaller than 0
+		Mixed
 	};
 
-	MoveType moveType;			// NOTE: rename? (because of (AMoveType*) CUnit::moveType)
+	/// NOTE: rename? (because of (AMoveType*) CUnit::moveType)
+	MoveType moveType;
 	MoveFamily moveFamily;
 	TerrainClass terrainClass;
-	bool followGround;			// do we stick to the ground when in water?
+	/// do we stick to the ground when in water?
+	bool followGround;
 
-	int size;					// of the footprint
-	float depth;				// minWaterDepth for ships, maxWaterDepth otherwise
+	/// of the footprint
+	int size;
+	/// minWaterDepth for ships, maxWaterDepth otherwise
+	float depth;
 	float maxSlope;
 	float slopeMod;
 	float depthMod;
@@ -75,7 +82,8 @@ struct MoveData {
 	float maxAcceleration;
 	float maxBreaking;
 
-	bool subMarine;				// are we supposed to be a purely sub-surface ship?
+	/// are we supposed to be a purely sub-surface ship?
+	bool subMarine;
 };
 
 
@@ -92,8 +100,12 @@ public:
 	unsigned int moveInfoChecksum;
 
 	float terrainType2MoveFamilySpeed[256][4];
+private:
+	CMoveMath* groundMoveMath;
+	CMoveMath* hoverMoveMath;
+	CMoveMath* seaMoveMath;
 };
 
 extern CMoveInfo* moveinfo;
 
-#endif /* MOVEINFO_H */
+#endif // MOVEINFO_H

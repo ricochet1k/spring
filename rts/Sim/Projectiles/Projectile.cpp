@@ -53,12 +53,13 @@ CProjectile::CProjectile():
 
 void CProjectile::Init(const float3& explosionPos, CUnit* owner GML_PARG_C)
 {
+	if (owner) {
+		ownerId = owner->id;
+	}
+
 	pos += explosionPos;
 	SetRadius(1.7f);
 	ph->AddProjectile(this);
-
-	if (owner)
-		ownerId = owner->id;
 }
 
 
@@ -74,11 +75,12 @@ CProjectile::CProjectile(const float3& pos, const float3& speed, CUnit* owner, b
 	s3domodel(0),
 	ownerId(0)
 {
+	if (owner) {
+		ownerId = owner->id;
+	}
+
 	SetRadius(1.7f);
 	ph->AddProjectile(this);
-
-	if (owner)
-		ownerId = owner->id;
 
 	GML_GET_TICKS(lastProjUpdate);
 }
@@ -131,13 +133,18 @@ void CProjectile::DrawOnMinimap(CVertexArray& lines, CVertexArray& points)
 	points.AddVertexQC(pos, color4::white);
 }
 
-void CProjectile::DrawArray()
+int CProjectile::DrawArray()
 {
+	int idx = 0;
+
 	va->DrawArrayTC(GL_QUADS);
-	ph->currentParticles+=va->drawIndex()/24;		//each particle quad is 24 values large
-	va=GetVertexArray();
+
+	idx = (va->drawIndex() / 24);
+	va = GetVertexArray();
 	va->Initialize();
-	inArray=false;
+	inArray = false;
+
+	return idx;
 }
 
 void CProjectile::DrawCallback(void)

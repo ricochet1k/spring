@@ -5,7 +5,7 @@
 #include <list>
 #include <vector>
 #include <boost/noncopyable.hpp>
-#include "creg/creg.h"
+#include "creg/creg_cond.h"
 #include "FeatureDef.h"
 #include "FeatureSet.h"
 
@@ -50,11 +50,16 @@ public:
 	const std::map<std::string, const FeatureDef*>& GetFeatureDefs() const { return featureDefs; }
 	const CFeatureSet& GetActiveFeatures() const { return activeFeatures; }
 
+	void DrawFadeFeatures(bool submerged, bool noAdvShading = false);
 private:
 	void AddFeatureDef(const std::string& name, FeatureDef* feature);
 	const FeatureDef* CreateFeatureDef(const LuaTable& luaTable, const std::string& name);
 
 private:
+
+	std::set<CFeature *> fadeFeatures;
+	std::set<CFeature *> fadeFeaturesS3O;
+
 	std::map<std::string, const FeatureDef*> featureDefs;
 	std::vector<const FeatureDef*> featureDefsVector;
 

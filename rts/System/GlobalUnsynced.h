@@ -21,8 +21,9 @@ class CUnit;
  */
 class CGlobalUnsyncedStuff
 {
-public:
 	CR_DECLARE(CGlobalUnsyncedStuff);
+
+public:
 	CGlobalUnsyncedStuff();  //!< Constructor
 	~CGlobalUnsyncedStuff(); //!< Destructor
 
@@ -200,6 +201,13 @@ public:
 	 * enables some ATI bugfixes
 	 */
 	bool atiHacks;
+
+	/**
+	 * @brief if the GPU (drivers) support NonPowerOfTwoTextures
+	 *
+	 * Especially some ATI cards report that they support NPOTs, but they don't (or just very limited).
+	 */
+	bool supportNPOTs;
 
 	/**
 	 * @brief quit automatically?

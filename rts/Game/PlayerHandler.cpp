@@ -37,6 +37,9 @@ void CPlayerHandler::LoadFromSetup(const CGameSetup* setup)
 	{
 		players[i] = setup->playerStartingData[i];
 		players[i].playerNum = i;
+#ifdef DIRECT_CONTROL_ALLOWED
+		players[i].myControl.myController = &players[i];
+#endif
 	}
 }
 
@@ -52,25 +55,23 @@ int CPlayerHandler::Player(const std::string& name) const
 
 void CPlayerHandler::PlayerLeft(int player, unsigned char reason)
 {
+	const char *type = Player(player)->spectator ? "Spectator" : "Player";
 	switch (reason) {
 		case 1: {
-			if (Player(player)->spectator) {
-				logOutput.Print("Spectator %s left", Player(player)->name.c_str());
-			} else {
-				logOutput.Print("Player %s left", Player(player)->name.c_str());
-			}
+			logOutput.Print("%s %s left", type, Player(player)->name.c_str());
 			break;
 		}
 		case 2:
-			logOutput.Print("Player %s has been kicked", Player(player)->name.c_str());
+			logOutput.Print("%s %s has been kicked", type, Player(player)->name.c_str());
 			break;
 		case 0:
-			logOutput.Print("Lost connection to %s", Player(player)->name.c_str());
+			logOutput.Print("%s %s dropped (connection lost)", type, Player(player)->name.c_str());
 			break;
 		default:
-			logOutput.Print("Player %s left the game (reason unknown: %i)", Player(player)->name.c_str(), reason);
+			logOutput.Print("%s %s left the game (reason unknown: %i)", type, Player(player)->name.c_str(), reason);
 	}
 	Player(player)->active = false;
+	Player(player)->ping = 0;
 }
 
 void CPlayerHandler::GameFrame(int frameNum)

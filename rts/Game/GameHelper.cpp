@@ -168,13 +168,15 @@ void CGameHelper::DoExplosionDamage(CFeature* feature,
 }
 
 
-void CGameHelper::Explosion(float3 expPos, const DamageArray& damages,
-                            float expRad, float edgeEffectiveness,
-                            float expSpeed, CUnit* owner,
-                            bool damageGround, float gfxMod, bool ignoreOwner, bool impactOnly,
-                            CExplosionGenerator* explosionGraphics, CUnit* hit,
-                            const float3& impactDir, int weaponId)
-{
+void CGameHelper::Explosion(
+	float3 expPos, const DamageArray& damages,
+	float expRad, float edgeEffectiveness,
+	float expSpeed, CUnit* owner,
+	bool damageGround, float gfxMod,
+	bool ignoreOwner, bool impactOnly,
+	CExplosionGenerator* explosionGraphics, CUnit* hit,
+	const float3& impactDir, int weaponId
+) {
 	if (luaUI) {
 		if ((weaponId >= 0) && (weaponId <= weaponDefHandler->numWeaponDefs)) {
 			WeaponDef& wd = weaponDefHandler->weaponDefs[weaponId];
@@ -262,7 +264,7 @@ void CGameHelper::Explosion(float3 expPos, const DamageArray& damages,
 
 
 // called by {CRifle, CBeamLaser, CLightningCannon}::Fire()
-float CGameHelper::TraceRay(const float3& start, const float3& dir, float length, float power, CUnit* owner, CUnit *&hit, int collisionFlags)
+float CGameHelper::TraceRay(const float3& start, const float3& dir, float length, float /*power*/, CUnit* owner, CUnit *&hit, int collisionFlags)
 {
 	float groundLength = ground->LineGroundCol(start, start + dir * length);
 	const bool ignoreAllies = !!(collisionFlags & COLLISION_NOFRIENDLY);
@@ -346,6 +348,7 @@ float CGameHelper::GuiTraceRay(const float3 &start, const float3 &dir, float len
 	CollisionQuery cq;
 
 	GML_RECMUTEX_LOCK(quad); // GuiTraceRay
+
 	vector<int> quads = qf->GetQuadsOnRay(start, dir, length);
 	vector<int>::iterator qi;
 
@@ -397,6 +400,8 @@ float CGameHelper::TraceRayTeam(const float3& start, const float3& dir, float le
 	if (length > groundLength && groundLength > 0) {
 		length = groundLength;
 	}
+
+	GML_RECMUTEX_LOCK(quad); // TraceRayTeam
 
 	vector<int> quads = qf->GetQuadsOnRay(start, dir, length);
 	hit = 0;
@@ -557,8 +562,6 @@ CUnit* CGameHelper::GetClosestUnit(const float3 &pos, float radius)
 
 	float closeDist = (radius * radius);
 	CUnit* closeUnit = NULL;
-
-//	GML_RECMUTEX_LOCK(quad); //GetClosestUnit
 
 	vector<int> quads = qf->GetQuads(pos, radius);
 
@@ -810,7 +813,7 @@ float CGameHelper::GuiTraceRayFeature(const float3& start, const float3& dir, fl
 {
 	float nearHit = length;
 
-	GML_RECMUTEX_LOCK(quad); //GuiTraceRayFeature
+	GML_RECMUTEX_LOCK(quad); // GuiTraceRayFeature
 
 	std::vector<int> quads = qf->GetQuadsOnRay(start, dir, length);
 	std::vector<int>::iterator qi;

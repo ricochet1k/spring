@@ -389,7 +389,6 @@ unitDef->category = sAICallback->Clb_UnitDef_getCategory(teamId, unitDefId);
 unitDef->speed = sAICallback->Clb_UnitDef_getSpeed(teamId, unitDefId);
 unitDef->turnRate = sAICallback->Clb_UnitDef_getTurnRate(teamId, unitDefId);
 unitDef->turnInPlace = sAICallback->Clb_UnitDef_isTurnInPlace(teamId, unitDefId);
-unitDef->moveType = sAICallback->Clb_UnitDef_getMoveType(teamId, unitDefId);
 unitDef->upright = sAICallback->Clb_UnitDef_isUpright(teamId, unitDefId);
 unitDef->collide = sAICallback->Clb_UnitDef_isCollide(teamId, unitDefId);
 unitDef->controlRadius = sAICallback->Clb_UnitDef_getControlRadius(teamId, unitDefId);
@@ -707,6 +706,14 @@ const unsigned short* CAIAICallback::GetLosMap() {
 	}
 
 	return losMap;
+}
+
+int CAIAICallback::GetLosMapResolution() {
+
+	int fullSize = GetMapWidth() * GetMapHeight();
+	int losSize = sAICallback->Clb_Map_0ARRAY1SIZE0getLosMap(teamId);
+
+	return fullSize / losSize;
 }
 
 const unsigned short* CAIAICallback::GetRadarMap() {
@@ -1478,8 +1485,6 @@ void CAIAICallback::DrawUnit(const char* name, float3 pos, float rotation, int l
 }
 
 int CAIAICallback::HandleCommand(int commandId, void* data) {
-
-	int cmdTopicId = commandId;
 	int ret = -99;
 
 	switch (commandId) {
@@ -1492,25 +1497,53 @@ int CAIAICallback::HandleCommand(int commandId, void* data) {
 		case AIHCAddMapPointId: {
 			AIHCAddMapPoint* myData = (AIHCAddMapPoint*) data;
 			SAddPointDrawCommand cmd = {myData->pos.toSAIFloat3(), myData->label};
-			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, cmdTopicId, &cmd);
+			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, COMMAND_DRAWER_POINT_ADD, &cmd);
 			break;
 		}
 		case AIHCAddMapLineId: {
 			AIHCAddMapLine* myData = (AIHCAddMapLine*) data;
 			SAddLineDrawCommand cmd = {myData->posfrom.toSAIFloat3(), myData->posto.toSAIFloat3()};
-			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, cmdTopicId, &cmd);
+			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, COMMAND_DRAWER_LINE_ADD, &cmd);
 			break;
 		}
 		case AIHCRemoveMapPointId: {
 			AIHCRemoveMapPoint* myData = (AIHCRemoveMapPoint*) data;
 			SRemovePointDrawCommand cmd = {myData->pos.toSAIFloat3()};
-			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, cmdTopicId, &cmd);
+			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, COMMAND_DRAWER_POINT_REMOVE, &cmd);
 			break;
 		}
 		case AIHCSendStartPosId: {
 			AIHCSendStartPos* myData = (AIHCSendStartPos*) data;
 			SSendStartPosCommand cmd = {myData->ready, myData->pos.toSAIFloat3()};
-			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, cmdTopicId, &cmd);
+			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, COMMAND_SEND_START_POS, &cmd);
+			break;
+		}
+
+		case AIHCTraceRayId: {
+			AIHCTraceRay* cppCmdData = (AIHCTraceRay*) data;
+			STraceRayCommand cCmdData = {
+				cppCmdData->rayPos.toSAIFloat3(),
+				cppCmdData->rayDir.toSAIFloat3(),
+				cppCmdData->rayLen,
+				cppCmdData->srcUID,
+				cppCmdData->hitUID,
+				cppCmdData->flags
+			};
+
+			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, COMMAND_TRACE_RAY, &cCmdData);
+
+			cppCmdData->rayLen = cCmdData.rayLen;
+			cppCmdData->hitUID = cCmdData.hitUID;
+			break;
+		}
+
+		case AIHCPauseId: {
+			AIHCPause* cppCmdData = (AIHCPause*) data;
+			SPauseCommand cCmdData = {
+				cppCmdData->enable,
+				cppCmdData->reason
+			};
+			ret = sAICallback->Clb_Engine_handleCommand(teamId, COMMAND_TO_ID_ENGINE, -1, COMMAND_PAUSE, &cCmdData);
 			break;
 		}
 	}

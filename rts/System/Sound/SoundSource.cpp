@@ -1,7 +1,11 @@
 #include "SoundSource.h"
 
 #include <climits>
+#ifndef __APPLE__
 #include <AL/alc.h>
+#else
+#include <OpenAL/alc.h>
+#endif
 #include <SDL_timer.h>
 
 #include "SoundBuffer.h"

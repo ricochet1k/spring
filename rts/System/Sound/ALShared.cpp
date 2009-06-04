@@ -1,6 +1,10 @@
 #include "ALShared.h"
 
+#ifndef __APPLE__
 #include <AL/al.h>
+#else
+#include <OpenAL/al.h>
+#endif
 
 const CLogSubsystem LOG_SOUND("Sound", true);
 

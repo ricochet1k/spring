@@ -1,0 +1,4 @@
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2")
+
+AUX_SOURCE_DIRECTORY(./ mac_sources)
+ADD_LIBRARY(MacCocoa STATIC ${mac_sources})

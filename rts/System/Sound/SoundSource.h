@@ -1,7 +1,11 @@
 #ifndef SOUNDSOURCE_H
 #define SOUNDSOURCE_H
 
+#ifndef __APPLE__
 #include <AL/al.h>
+#else
+#include <OpenAL/al.h>
+#endif
 #include <boost/noncopyable.hpp>
 
 class float3;

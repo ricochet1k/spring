@@ -1,7 +1,11 @@
 #ifndef OGGSTREAM_H
 #define OGGSTREAM_H
 
+#ifndef __APPLE__
 #include <AL/al.h>
+#else
+#include <OpenAL/al.h>
+#endif
 #include <ogg/ogg.h>
 #include <vorbis/vorbisfile.h>
 

@@ -4,7 +4,11 @@
 
 #include <cstdlib>
 #include <cmath>
+#ifndef __APPLE__
 #include <AL/alc.h>
+#else
+#include <OpenAL/alc.h>
+#endif
 #include <boost/cstdint.hpp>
 
 #include "SoundSource.h"

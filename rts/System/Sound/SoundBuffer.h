@@ -1,7 +1,11 @@
 #ifndef SOUNDBUFFER_H
 #define SOUNDBUFFER_H
 
+#ifndef __APPLE__
 #include <AL/al.h>
+#else
+#include <OpenAL/al.h>
+#endif
 #include <boost/noncopyable.hpp>
 #include <boost/shared_ptr.hpp>
 #include <string>

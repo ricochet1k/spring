@@ -60,6 +60,9 @@
 /rts/build/vstudio8/Release+MT with error catching
 /rts/build/vstudio8/Syncdebug
 
+# XCode related
+/rts/build/xcode/build
+
 # NTai build folders
 /AI/Skirmish/NTai/AI/Debug
 /AI/Skirmish/NTai/AI/Release
@@ -94,4 +97,5 @@
 
 # ???
 progress.make
+.DS_Store
 

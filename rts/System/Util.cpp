@@ -1,7 +1,7 @@
 #include "Util.h"
 
 namespace proc {
-	#if defined(__GNUC__)
+	#if defined(__GNUC__) && !defined(__POWERPC__)
 	// function inlining breaks this
 	__attribute__((__noinline__))
 	void ExecCPUID(unsigned int* a, unsigned int* b, unsigned int* c, unsigned int* d)

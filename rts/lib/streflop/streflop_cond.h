@@ -21,9 +21,17 @@ namespace math {
 #include <math.h>
 namespace math {
 	using std::fabs;
+	using ::fabsf;
 	using std::sqrt;
 	using std::sin;
 	using std::cos;
+	using std::ceil;
+	using std::floor;
+	using ::powf;
+	using ::sqrtf;
+}
+namespace streflop {
+	using namespace math;
 }
 using std::isnan;
 using std::isinf;

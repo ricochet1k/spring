@@ -226,11 +226,12 @@ bool SpringApp::Initialize()
 
 	keys = new boost::uint8_t[SDLK_LAST];
 	memset (keys,0,sizeof(boost::uint8_t)*SDLK_LAST);
+	
+	// Initialize GLEW
+	LoadExtensions();
 
 	LoadFonts();
 
-	// Initialize GLEW
-	LoadExtensions();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	SDL_GL_SwapBuffers();
 

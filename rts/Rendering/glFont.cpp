@@ -384,7 +384,7 @@ GLuint CFontTextureRenderer::CreateTexture()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	}
-	static const GLfloat borderColor[4] = {1.0f,1.0f,1.0f,0.0f};
+	static const GLfloat borderColor[4] = {0.0f,0.0f,0.0f,0.0f};
 	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, texWidth, texHeight, 0, GL_ALPHA, GL_UNSIGNED_BYTE, atlas);
 	delete[] atlas;

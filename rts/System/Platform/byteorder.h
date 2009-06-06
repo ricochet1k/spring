@@ -79,9 +79,25 @@ static inline float swabfloat(float w) {
 
 #include <CoreFoundation/CFByteOrder.h>
 
-#define swabword(w)	CFSwapInt32(w)
-#define swabdword(w)	CFSwapInt64(w)
-#define swabfloat(w)	(w)
+#define swabword(w)	CFSwapInt16(w)
+#define swabdword(w)	CFSwapInt32(w)
+
+static inline float swabfloat(float w) {
+	char octets[4];
+	char ret_octets[4];
+	float ret;
+
+	memcpy(octets, &w, 4);
+
+	ret_octets[0] = octets[3];
+	ret_octets[1] = octets[2];
+	ret_octets[2] = octets[1];
+	ret_octets[3] = octets[0];
+
+	memcpy(&ret, ret_octets, 4);
+
+	return ret;
+}
 
 #else
 

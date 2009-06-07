@@ -885,6 +885,23 @@ static void* GetMinimapSMF(string mapName, int miplevel)
 
 	SMFHeader mh;
 	in.Read(&mh, sizeof(mh));
+    
+    mh.version = swabdword(mh.version);
+    mh.mapid = swabdword(mh.mapid);
+    mh.mapx = swabdword(mh.mapx);
+    mh.mapy = swabdword(mh.mapy);
+    mh.squareSize = swabdword(mh.texelPerSquare);
+    mh.tilesize = swabdword(mh.tilesize);
+    mh.minHeight = swabdword(mh.minHeight);
+    mh.maxHeight = swabdword(mh.maxHeight);
+    mh.heightmapPtr = swabdword(mh.heightmapPtr);
+    mh.typeMapPtr = swabdword(mh.typeMapPtr);
+    mh.tilesPtr = swabdword(mh.tilesPtr);
+    mh.minimapPtr = swabdword(mh.minimapPtr);
+    mh.metalmapPtr = swabdword(mh.metalmapPtr);
+    mh.featurePtr = swabdword(mh.featurePtr);
+    mh.numExtraHeaders = swabdword(mh.numExtraHeaders);
+    
 	in.Seek(mh.minimapPtr + offset);
 	in.Read(buffer, size);
 
@@ -896,9 +913,9 @@ static void* GetMinimapSMF(string mapName, int miplevel)
 	unsigned char* temp = buffer;
 
 	for ( int i = 0; i < numblocks; i++ ) {
-		unsigned short color0 = (*(unsigned short*)&temp[0]);
-		unsigned short color1 = (*(unsigned short*)&temp[2]);
-		unsigned int bits = (*(unsigned int*)&temp[4]);
+		unsigned short color0 = swabword((*(unsigned short*)&temp[0]));
+		unsigned short color1 = swabword((*(unsigned short*)&temp[2]));
+		unsigned int bits = swabdword((*(unsigned int*)&temp[4]));
 
 		for ( int a = 0; a < 4; a++ ) {
 			for ( int b = 0; b < 4; b++ ) {

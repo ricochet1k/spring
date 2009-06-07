@@ -49,8 +49,8 @@ CSound::CSound() : prevVelocity(0.0, 0.0, 0.0), numEmptyPlayRequests(0), updateC
 	{
 		//TODO: device choosing, like this:
 		//const ALchar* deviceName = "ALSA Software on SB Live 5.1 [SB0220] [Multichannel Playback]";
-		const ALchar* deviceName = NULL;
-		ALCdevice *device = alcOpenDevice(deviceName);
+		const char* deviceName = NULL;
+		ALCdevice *device = alcOpenDevice((ALCubyte*)deviceName);
 
 		if (device == NULL)
 		{
@@ -79,10 +79,10 @@ CSound::CSound() : prevVelocity(0.0, 0.0, 0.0), numEmptyPlayRequests(0), updateC
 		LogObject(LOG_SOUND) << "  Renderer:   " << (const char*)alGetString(AL_RENDERER);
 		LogObject(LOG_SOUND) << "  AL Extensions: " << (const char*)alGetString(AL_EXTENSIONS);
 		LogObject(LOG_SOUND) << "  ALC Extensions: " << (const char*)alcGetString(device, ALC_EXTENSIONS);
-		if(alcIsExtensionPresent(NULL, "ALC_ENUMERATION_EXT"))
+		if(alcIsExtensionPresent(NULL, (ALCubyte*)"ALC_ENUMERATION_EXT"))
 		{
 			LogObject(LOG_SOUND) << "  Device:     " << alcGetString(device, ALC_DEVICE_SPECIFIER);
-			const char *s = alcGetString(NULL, ALC_DEVICE_SPECIFIER);
+			const char *s = (const char*)alcGetString(NULL, ALC_DEVICE_SPECIFIER);
 			LogObject(LOG_SOUND) << "  Available Devices:  ";
 			while (*s != '\0')
 			{

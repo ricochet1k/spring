@@ -2,6 +2,11 @@
 cmake_minimum_required(VERSION 2.6)
 project(Spring)
 
+if (CMAKE_SYSTEM_PROCESSOR MATCHES powerpc)
+	set (POWERPC TRUE)
+endif (CMAKE_SYSTEM_PROCESSOR MATCHES powerpc)
+
+
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/rts/build/cmake")
 
 ### Install path (relative to CMAKE_INSTALL_PREFIX)
@@ -158,20 +163,27 @@ IF ($ENV{CXX} MATCHES "icpc")
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -axK") # SSE1
 	SET(CXX_FLAGS_DEBUG_ADDITIONAL "-g -debug full")
 ELSE ($ENV{CXX} MATCHES "icpc")
-	IF (MARCH_FLAG)
-		set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${MARCH_FLAG}")
-	ENDIF (MARCH_FLAG)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse -mfpmath=sse") # SSE1
-	IF (MINGW)
-		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mthreads") # SSE1
-	ENDIF (MINGW)
+	IF (NOT POWERPC)
+		IF (MARCH_FLAG)
+			set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${MARCH_FLAG}")
+		ENDIF (MARCH_FLAG)
+		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse -mfpmath=sse") # SSE1
+		IF (MINGW)
+			SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mthreads") # SSE1
+		ENDIF (MINGW)
+	ENDIF (NOT POWERPC)
 
 	SET(CXX_FLAGS_DEBUG_ADDITIONAL "")
 ENDIF ($ENV{CXX} MATCHES "icpc")
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsingle-precision-constant -frounding-math -fsignaling-nans")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mieee-fp -pipe -fno-strict-aliasing ${VISIBILITY_HIDDEN} ${VISIBILITY_INLINES_HIDDEN}")
-ADD_DEFINITIONS(-DSTREFLOP_SSE) # would break AI compiling, but is undefined in ./AI/CMakeLists.txt
+IF (NOT POWERPC)
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mieee-fp ${VISIBILITY_INLINES_HIDDEN}")
+ENDIF (NOT POWERPC)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe -fno-strict-aliasing ${VISIBILITY_HIDDEN}")
+if (NOT POWERPC)
+	ADD_DEFINITIONS(-DSTREFLOP_SSE) # would break AI compiling, but is undefined in ./AI/CMakeLists.txt
+endif (NOT POWERPC)
 IF (UNIX)
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 ENDIF (UNIX)

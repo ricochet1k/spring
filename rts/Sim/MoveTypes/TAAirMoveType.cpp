@@ -312,7 +312,7 @@ void CTAAirMoveType::UpdateTakeoff()
 // Move the unit around a bit..
 void CTAAirMoveType::UpdateHovering()
 {
-	#define NOZERO(x) std::max((double)x,0.0001)
+	#define NOZERO(x) std::max((float)x,0.0001f)
 
 	const float driftSpeed = fabs(owner->unitDef->dlHoverFactor);
 	float3 deltaVec = goalPos - owner->pos;
